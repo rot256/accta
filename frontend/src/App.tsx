@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { ChatMessage } from './components/ChatMessage';
 import { ChatInput } from './components/ChatInput';
-import { ConnectionStatus } from './components/ConnectionStatus';
 import { ChatMessage as ChatMessageType, ToolCall, AgentMessage } from './types';
 import './App.css';
 
@@ -97,7 +96,7 @@ function App() {
     }
   }, []);
 
-  const { isConnected, isConnecting, connect, disconnect, sendMessage } = useWebSocket(handleMessage);
+  const { isConnected, isConnecting, connect, sendMessage } = useWebSocket(handleMessage);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -106,6 +105,11 @@ function App() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    // Auto-connect when component mounts
+    connect();
+  }, [connect]);
 
   const handleSendMessage = (message: string) => {
     if (!isConnected) return;
@@ -132,12 +136,6 @@ function App() {
     <div className="App">
       <header className="app-header">
         <h1>Accta Agent Chat</h1>
-        <ConnectionStatus
-          isConnected={isConnected}
-          isConnecting={isConnecting}
-          onConnect={connect}
-          onDisconnect={disconnect}
-        />
       </header>
       
       <main className="chat-container">
