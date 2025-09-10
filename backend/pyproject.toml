@@ -6,4 +6,8 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "openai-agents>=0.2.11",
+    "fastapi",
+    "uvicorn[standard]",
+    "websockets",
+    "python-multipart",
 ]

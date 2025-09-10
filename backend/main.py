@@ -1,17 +1,10 @@
 import asyncio
-from agents import Agent, Runner, function_tool
+import argparse
+import uvicorn
+from agents import Runner
+from agent import agent
 
-@function_tool
-def generate_haiku():
-    return "Recursion is a tool\nTo solve problems, it's cool\nProgramming is fun!"
-
-agent = Agent(
-    name="Assistant",
-    instructions="You are a helpful assistant",
-    tools=[generate_haiku],
-)
-
-async def main():
+async def run_cli():
     result = Runner.run_streamed(
         agent,
         input="Use the generate_haiku tool to write a haiku.",
@@ -41,4 +34,21 @@ async def main():
             elif event.data.type == 'response.output_text.done':
                 print("\n")  # Add newline when text is complete
 
-asyncio.run(main())
+def run_server(host: str = "0.0.0.0", port: int = 8000):
+    uvicorn.run("api:app", host=host, port=port, reload=True)
+
+def main():
+    parser = argparse.ArgumentParser(description="ACCTA Agent")
+    parser.add_argument("--mode", choices=["cli", "server"], default="cli", help="Run mode")
+    parser.add_argument("--host", default="0.0.0.0", help="Server host")
+    parser.add_argument("--port", type=int, default=8000, help="Server port")
+    
+    args = parser.parse_args()
+    
+    if args.mode == "cli":
+        asyncio.run(run_cli())
+    elif args.mode == "server":
+        run_server(args.host, args.port)
+
+if __name__ == "__main__":
+    main()
