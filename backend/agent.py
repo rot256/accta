@@ -142,6 +142,9 @@ IMPORTANT: Always format your responses using Markdown syntax when appropriate. 
 
 The frontend supports GitHub Flavored Markdown (GFM) and will render your Markdown properly, so feel free to use rich formatting including tables to make your responses more readable and well-structured.
 
+AVOID THE USE OF EMOJIS.
+AVOID THE USE OF ALARMING/SENSTATIONALIST LANGUAGE.
+
 Data about the entity:
 {META}
 """,
