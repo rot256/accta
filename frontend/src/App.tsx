@@ -3,12 +3,11 @@ import { useWebSocket } from './hooks/useWebSocket';
 import { ChatMessage } from './components/ChatMessage';
 import { ChatInput } from './components/ChatInput';
 import { LoadingMessage } from './components/LoadingMessage';
-import { ChatMessage as ChatMessageType, ToolCall, AgentMessage } from './types';
+import { ChatMessage as ChatMessageType, AgentMessage } from './types';
 import './App.css';
 
 function App() {
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
-  const [currentToolCalls, setCurrentToolCalls] = useState<ToolCall[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
@@ -18,25 +17,44 @@ function App() {
     switch (data.type) {
       case 'start':
         setIsProcessing(true);
-        setCurrentToolCalls([]);
         break;
         
       case 'tool_called':
         if (data.tool_name) {
-          setCurrentToolCalls(prev => [
-            ...prev,
-            { name: data.tool_name!, args: data.tool_args || '' }
-          ]);
+          // Create a separate tool call message
+          const toolCallMessage: ChatMessageType = {
+            id: `tool-${Date.now()}-${Math.random()}`,
+            role: 'tool',
+            content: `Called ${data.tool_name}`,
+            timestamp: new Date(),
+            toolCall: { name: data.tool_name, args: data.tool_args || '' }
+          };
+          
+          setMessages(prev => [...prev, toolCallMessage]);
         }
         break;
         
       case 'tool_output':
         if (data.output) {
-          setCurrentToolCalls(prev => 
-            prev.map((tool, index) => 
-              index === prev.length - 1 ? { ...tool, output: data.output } : tool
-            )
-          );
+          // Update the last tool message with the output
+          setMessages(prev => {
+            const lastToolMessageIndex = prev.map(m => m.role).lastIndexOf('tool');
+            if (lastToolMessageIndex !== -1) {
+              const lastToolMessage = prev[lastToolMessageIndex];
+              const updatedToolMessage = {
+                ...lastToolMessage,
+                toolCall: lastToolMessage.toolCall ? 
+                  { ...lastToolMessage.toolCall, output: data.output } : 
+                  undefined
+              };
+              return [
+                ...prev.slice(0, lastToolMessageIndex),
+                updatedToolMessage,
+                ...prev.slice(lastToolMessageIndex + 1)
+              ];
+            }
+            return prev;
+          });
         }
         break;
         
@@ -79,6 +97,7 @@ function App() {
         break;
         
       case 'complete':
+        console.log('🎯 COMPLETE event received');
         setIsProcessing(false);
         break;
         
@@ -126,26 +145,16 @@ function App() {
     sendMessage(message);
   };
 
-  const getToolCallsForMessage = (messageIndex: number): ToolCall[] => {
-    if (messageIndex === messages.length - 1 && isProcessing) {
-      return currentToolCalls;
-    }
-    return [];
-  };
 
   return (
     <div className="App">
-      <header className="app-header">
-        <h1>Accta Agent Chat</h1>
-      </header>
       
       <main className="chat-container">
         <div className="messages">
-          {messages.map((message, index) => (
+          {messages.map((message) => (
             <ChatMessage
               key={message.id}
               message={message}
-              toolCalls={getToolCallsForMessage(index)}
             />
           ))}
           {isProcessing && messages.length > 0 && !messages[messages.length - 1]?.isStreaming && (

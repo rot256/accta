@@ -9,10 +9,12 @@ export interface AgentMessage {
 
 export interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'tool';
   content: string;
   timestamp: Date;
   isStreaming?: boolean;
+  toolCalls?: ToolCall[];
+  toolCall?: ToolCall; // For individual tool call messages
 }
 
 export interface ToolCall {
