@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { ChatMessage as ChatMessageType, ToolCall } from '../types';
 
 interface ChatMessageProps {
@@ -13,7 +15,11 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
   return (
     <div className={`message ${message.role}`}>
       <div className="message-content">
-        {message.content}
+        {message.role === 'assistant' ? (
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+        ) : (
+          message.content
+        )}
         {message.isStreaming && <span className="cursor">|</span>}
       </div>
     </div>
@@ -42,21 +48,26 @@ const ToolCallDisplay: React.FC<ToolCallDisplayProps> = ({ tool }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   
   return (
-    <div className="tool-call">
-      <div className="tool-header">🔧 Called {tool.name}</div>
-      {tool.args && tool.args !== '{}' && (
-        <div className="tool-args">Arguments: {tool.args}</div>
-      )}
-      {tool.output && (
-        <div className="tool-output">
+    <div className={`tool-call-container ${isExpanded ? 'expanded' : 'collapsed'}`}>
+      <div className="tool-header">
+        <span className="tool-icon">⚙</span> {tool.name}
+        {tool.output && (
           <button 
             className="tool-output-toggle"
             onClick={() => setIsExpanded(!isExpanded)}
           >
             {isExpanded ? '▼' : '▶'} Result
           </button>
-          {isExpanded && (
-            <div className="tool-output-content">{tool.output}</div>
+        )}
+      </div>
+      
+      {isExpanded && (
+        <div className="tool-expanded-content">
+          {tool.args && tool.args !== '{}' && (
+            <div className="tool-args">Arguments: {tool.args}</div>
+          )}
+          {tool.output && (
+            <div className="tool-output">{tool.output}</div>
           )}
         </div>
       )}

@@ -1,13 +1,28 @@
 import asyncio
 import argparse
 import uvicorn
-from agents import Runner
+import uuid
+from agents import Runner, SQLiteSession
 from agent import agent
 
-async def run_cli():
+# Single global session for the CLI
+_cli_session = None
+
+def get_cli_session():
+    """Get the global CLI session."""
+    global _cli_session
+    if _cli_session is None:
+        _cli_session = SQLiteSession(session_id="cli", db_path=":memory:")
+    return _cli_session
+
+async def run_single_message(user_input: str):
+    """Process a single message in the conversation."""
+    session = get_cli_session()
+    
     result = Runner.run_streamed(
         agent,
-        input="Use the generate_haiku tool to write a haiku.",
+        input=user_input,
+        session=session,
     )
     
     print("Assistant is thinking...\n")
@@ -33,6 +48,34 @@ async def run_cli():
                 
             elif event.data.type == 'response.output_text.done':
                 print("\n")  # Add newline when text is complete
+
+async def run_cli():
+    print("=== ACCTA Agent Chat ===")
+    print("Type 'exit' to quit, 'clear' to clear conversation history\n")
+    
+    # Interactive mode
+    while True:
+        try:
+            user_input = input("You: ").strip()
+            if user_input.lower() == 'exit':
+                break
+            elif user_input.lower() == 'clear':
+                session = get_cli_session()
+                await session.clear_session()
+                print("Conversation history cleared.\n")
+                continue
+            elif not user_input:
+                continue
+            
+            print()
+            await run_single_message(user_input)
+            
+        except KeyboardInterrupt:
+            print("\nGoodbye!")
+            break
+        except EOFError:
+            print("\nGoodbye!")
+            break
 
 def run_server(host: str = "0.0.0.0", port: int = 8000):
     uvicorn.run("api:app", host=host, port=port, reload=True)

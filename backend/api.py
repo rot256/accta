@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import logging
+import uuid
 from pathlib import Path
 from typing import Dict, Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -9,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from agents import Runner
 from agent import agent
+from agents import SQLiteSession
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -31,25 +33,37 @@ frontend_build_path = current_dir.parent / "frontend" / "build"
 
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: list[WebSocket] = []
+        self.websocket_sessions: Dict[WebSocket, SQLiteSession] = {}
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
-        self.active_connections.append(websocket)
+        session_id = str(uuid.uuid4())
+        session = SQLiteSession(session_id=session_id, db_path=":memory:")
+        self.websocket_sessions[websocket] = session
+        return session_id, session
 
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+        self.websocket_sessions.pop(websocket, None)
 
     async def send_personal_message(self, message: str, websocket: WebSocket):
         await websocket.send_text(message)
+    
+    def get_session(self, websocket: WebSocket) -> SQLiteSession:
+        return self.websocket_sessions.get(websocket)
 
 manager = ConnectionManager()
 
 @app.websocket("/ws/agent")
 async def websocket_endpoint(websocket: WebSocket):
     logger.debug(f"WebSocket connection attempt from {websocket.client}")
-    await manager.connect(websocket)
-    logger.debug("WebSocket connected successfully")
+    session_id, session = await manager.connect(websocket)
+    logger.debug(f"WebSocket connected successfully with session ID: {session_id}")
+    
+    # Send session ID to client
+    await manager.send_personal_message(
+        json.dumps({"type": "session_init", "session_id": session_id}),
+        websocket
+    )
     
     try:
         while True:
@@ -67,6 +81,24 @@ async def websocket_endpoint(websocket: WebSocket):
                     websocket
                 )
                 continue
+            
+            # Handle session management commands
+            if message_data.get("type") == "session_command":
+                command = message_data.get("command")
+                if command == "clear_session":
+                    await session.clear_session()
+                    await manager.send_personal_message(
+                        json.dumps({"type": "session_cleared", "session_id": session_id}),
+                        websocket
+                    )
+                    continue
+                elif command == "get_conversation":
+                    conversation_history = await session.get_items()
+                    await manager.send_personal_message(
+                        json.dumps({"type": "conversation_history", "history": conversation_history}),
+                        websocket
+                    )
+                    continue
                 
             user_input = message_data.get("message", "")
             logger.debug(f"User input: '{user_input}'")
@@ -80,7 +112,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 continue
             
             logger.debug("Starting agent processing...")
-            result = Runner.run_streamed(agent, input=user_input)
+            result = Runner.run_streamed(
+                agent, 
+                input=user_input,
+                session=session,
+            )
             
             await manager.send_personal_message(
                 json.dumps({"type": "start", "message": "Agent is processing..."}),
