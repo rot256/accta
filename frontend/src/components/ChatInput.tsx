@@ -28,7 +28,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, disabled })
         value={message}
         onChange={(e) => setMessage(e.target.value)}
         onKeyPress={handleKeyPress}
-        placeholder="Type your message..."
+        placeholder="Ask questions or request changes"
         disabled={disabled}
         rows={3}
       />

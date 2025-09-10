@@ -271,7 +271,7 @@
   padding: 1rem 1.5rem;
   background: linear-gradient(135deg, var(--accent-orange) 0%, var(--accent-warm) 100%);
   color: white;
-  border: none;
+  border: 2px solid var(--accent-orange);
   border-radius: 16px;
   cursor: pointer;
   align-self: flex-end;
@@ -279,12 +279,14 @@
   font-size: 0.95rem;
   transition: all 0.2s ease;
   box-shadow: var(--shadow-subtle);
+  min-height: 52px;
 }
 
 .chat-input button:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: var(--shadow-elevated);
   background: linear-gradient(135deg, #b8661a 0%, #b8751f 100%);
+  border-color: #b8661a;
 }
 
 .chat-input button:active:not(:disabled) {
@@ -293,6 +295,7 @@
 
 .chat-input button:disabled {
   background: var(--text-muted);
+  border-color: var(--text-muted);
   cursor: not-allowed;
   transform: none;
   box-shadow: var(--shadow-subtle);
