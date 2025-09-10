@@ -13,9 +13,21 @@ META = {
             "name": "Wise",
             "currency": "USD",
             "IBAN": "US1234567890"
+        },
+        "account2-wise-eur": {
+            "name": "Wise",
+            "currency": "EUR",
+            "IBAN": "DE1234567890"
         }
     }
 }
+
+def action_create_invoice():
+    pass
+
+def action_reconcile_transactions():
+    """Reconcile a list of transactions for a given year and bank ID."""
+    pass
 
 @function_tool
 def get_current_time():
