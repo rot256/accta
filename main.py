@@ -16,9 +16,29 @@ async def main():
         agent,
         input="Use the generate_haiku tool to write a haiku.",
     )
+    
+    print("Assistant is thinking...\n")
+    
     async for event in result.stream_events():
-        print(f"Event: {type(event).__name__}")
-        print(f"Data: {event}")
-        print("-" * 50)
+        if event.type == 'run_item_stream_event':
+            if event.name == 'tool_called':
+                tool_name = event.item.raw_item.name
+                tool_args = event.item.raw_item.arguments
+                print(f"Calling tool: {tool_name}")
+                if tool_args and tool_args != '{}':
+                    print(f"   Arguments: {tool_args}")
+                print()
+                
+            elif event.name == 'tool_output':
+                output = event.item.output
+                print(f"Tool output: {output}")
+                print()
+                
+        elif event.type == 'raw_response_event':
+            if event.data.type == 'response.output_text.delta':
+                print(event.data.delta, end='', flush=True)
+                
+            elif event.data.type == 'response.output_text.done':
+                print("\n")  # Add newline when text is complete
 
 asyncio.run(main())
