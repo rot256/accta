@@ -76,7 +76,6 @@
 }
 
 .message {
-  max-width: 80%;
   padding: 1rem;
   border-radius: 8px;
   word-wrap: break-word;
@@ -84,12 +83,14 @@
 
 .message.user {
   align-self: flex-end;
+  max-width: 80%;
   background-color: #007bff;
   color: white;
 }
 
 .message.assistant {
   align-self: flex-start;
+  width: 80%;
   background-color: #f8f9fa;
   border: 1px solid #dee2e6;
 }
@@ -114,6 +115,42 @@
 @keyframes blink {
   0%, 50% { opacity: 1; }
   51%, 100% { opacity: 0; }
+}
+
+@keyframes pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+@keyframes dots {
+  0%, 20% { content: '.'; }
+  40% { content: '..'; }
+  60% { content: '...'; }
+  90%, 100% { content: ''; }
+}
+
+.loading-message {
+  align-self: flex-start;
+  width: 80%;
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  padding: 1rem;
+  border-radius: 8px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.loading-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #6c757d;
+  font-style: italic;
+}
+
+.loading-dots::after {
+  content: '';
+  animation: dots 1.5s steps(4, end) infinite;
 }
 
 .tool-calls {

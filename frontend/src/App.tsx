@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { ChatMessage } from './components/ChatMessage';
 import { ChatInput } from './components/ChatInput';
+import { LoadingMessage } from './components/LoadingMessage';
 import { ChatMessage as ChatMessageType, ToolCall, AgentMessage } from './types';
 import './App.css';
 
@@ -147,6 +148,9 @@ function App() {
               toolCalls={getToolCallsForMessage(index)}
             />
           ))}
+          {isProcessing && messages.length > 0 && !messages[messages.length - 1]?.isStreaming && (
+            <LoadingMessage />
+          )}
           <div ref={messagesEndRef} />
         </div>
         
