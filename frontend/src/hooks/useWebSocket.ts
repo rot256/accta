@@ -1,10 +1,16 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { AgentMessage } from '../types';
 
-export const useWebSocket = () => {
+export const useWebSocket = (onMessage?: (message: AgentMessage) => void) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const messageHandlerRef = useRef<((message: AgentMessage) => void) | undefined>(onMessage);
+
+  // Update the message handler ref when the callback changes
+  useEffect(() => {
+    messageHandlerRef.current = onMessage;
+  }, [onMessage]);
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -33,6 +39,21 @@ export const useWebSocket = () => {
       console.error('WebSocket error:', error);
     };
 
+    ws.onmessage = (event) => {
+      console.log('Raw WebSocket message received:', event.data);
+      try {
+        const data: AgentMessage = JSON.parse(event.data);
+        console.log('Parsed message:', data);
+        if (messageHandlerRef.current) {
+          messageHandlerRef.current(data);
+        } else {
+          console.warn('No message handler set');
+        }
+      } catch (error) {
+        console.error('Failed to parse WebSocket message:', error);
+      }
+    };
+
     wsRef.current = ws;
   }, []);
 
@@ -45,21 +66,15 @@ export const useWebSocket = () => {
   }, []);
 
   const sendMessage = useCallback((message: string) => {
+    console.log('sendMessage called with:', message);
+    console.log('WebSocket state:', wsRef.current?.readyState);
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ message }));
-    }
-  }, []);
-
-  const onMessage = useCallback((callback: (message: AgentMessage) => void) => {
-    if (wsRef.current) {
-      wsRef.current.onmessage = (event) => {
-        try {
-          const data: AgentMessage = JSON.parse(event.data);
-          callback(data);
-        } catch (error) {
-          console.error('Failed to parse WebSocket message:', error);
-        }
-      };
+      const payload = JSON.stringify({ message });
+      console.log('Sending payload:', payload);
+      wsRef.current.send(payload);
+      console.log('Message sent successfully');
+    } else {
+      console.error('WebSocket not open. State:', wsRef.current?.readyState);
     }
   }, []);
 
@@ -69,6 +84,5 @@ export const useWebSocket = () => {
     connect,
     disconnect,
     sendMessage,
-    onMessage,
   };
 };

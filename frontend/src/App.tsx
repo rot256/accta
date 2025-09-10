@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { ChatMessage } from './components/ChatMessage';
 import { ChatInput } from './components/ChatInput';
@@ -12,7 +12,92 @@ function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  const { isConnected, isConnecting, connect, disconnect, sendMessage, onMessage } = useWebSocket();
+  const handleMessage = useCallback((data: AgentMessage) => {
+    console.log('Received message:', data);
+    
+    switch (data.type) {
+      case 'start':
+        setIsProcessing(true);
+        setCurrentToolCalls([]);
+        break;
+        
+      case 'tool_called':
+        if (data.tool_name) {
+          setCurrentToolCalls(prev => [
+            ...prev,
+            { name: data.tool_name!, args: data.tool_args || '' }
+          ]);
+        }
+        break;
+        
+      case 'tool_output':
+        if (data.output) {
+          setCurrentToolCalls(prev => 
+            prev.map((tool, index) => 
+              index === prev.length - 1 ? { ...tool, output: data.output } : tool
+            )
+          );
+        }
+        break;
+        
+      case 'text_delta':
+        if (data.delta) {
+          setMessages(prev => {
+            const lastMessage = prev[prev.length - 1];
+            if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
+              return [
+                ...prev.slice(0, -1),
+                { ...lastMessage, content: lastMessage.content + data.delta }
+              ];
+            } else {
+              return [
+                ...prev,
+                {
+                  id: Date.now().toString(),
+                  role: 'assistant',
+                  content: data.delta || '',
+                  timestamp: new Date(),
+                  isStreaming: true
+                }
+              ];
+            }
+          });
+        }
+        break;
+        
+      case 'text_done':
+        setMessages(prev => {
+          const lastMessage = prev[prev.length - 1];
+          if (lastMessage && lastMessage.isStreaming) {
+            return [
+              ...prev.slice(0, -1),
+              { ...lastMessage, isStreaming: false }
+            ];
+          }
+          return prev;
+        });
+        break;
+        
+      case 'complete':
+        setIsProcessing(false);
+        break;
+        
+      case 'error':
+        setIsProcessing(false);
+        setMessages(prev => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: `Error: ${data.message || 'Unknown error occurred'}`,
+            timestamp: new Date()
+          }
+        ]);
+        break;
+    }
+  }, []);
+
+  const { isConnected, isConnecting, connect, disconnect, sendMessage } = useWebSocket(handleMessage);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -21,93 +106,6 @@ function App() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
-
-  useEffect(() => {
-    onMessage((data: AgentMessage) => {
-      console.log('Received message:', data);
-      
-      switch (data.type) {
-        case 'start':
-          setIsProcessing(true);
-          setCurrentToolCalls([]);
-          break;
-          
-        case 'tool_called':
-          if (data.tool_name) {
-            setCurrentToolCalls(prev => [
-              ...prev,
-              { name: data.tool_name!, args: data.tool_args || '' }
-            ]);
-          }
-          break;
-          
-        case 'tool_output':
-          if (data.output) {
-            setCurrentToolCalls(prev => 
-              prev.map((tool, index) => 
-                index === prev.length - 1 ? { ...tool, output: data.output } : tool
-              )
-            );
-          }
-          break;
-          
-        case 'text_delta':
-          if (data.delta) {
-            setMessages(prev => {
-              const lastMessage = prev[prev.length - 1];
-              if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
-                return [
-                  ...prev.slice(0, -1),
-                  { ...lastMessage, content: lastMessage.content + data.delta }
-                ];
-              } else {
-                return [
-                  ...prev,
-                  {
-                    id: Date.now().toString(),
-                    role: 'assistant',
-                    content: data.delta || '',
-                    timestamp: new Date(),
-                    isStreaming: true
-                  }
-                ];
-              }
-            });
-          }
-          break;
-          
-        case 'text_done':
-          setMessages(prev => {
-            const lastMessage = prev[prev.length - 1];
-            if (lastMessage && lastMessage.isStreaming) {
-              return [
-                ...prev.slice(0, -1),
-                { ...lastMessage, isStreaming: false }
-              ];
-            }
-            return prev;
-          });
-          break;
-          
-        case 'complete':
-          setIsProcessing(false);
-          break;
-          
-        case 'error':
-          setIsProcessing(false);
-          setMessages(prev => [
-            ...prev,
-            {
-              id: Date.now().toString(),
-              role: 'assistant',
-              content: `Error: ${data.message || 'Unknown error occurred'}`,
-              timestamp: new Date()
-            }
-          ]);
-          break;
-      }
-    });
-  }, [onMessage]);
 
   const handleSendMessage = (message: string) => {
     if (!isConnected) return;
