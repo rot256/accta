@@ -3,10 +3,11 @@ import argparse
 import uvicorn
 import uuid
 from agents import Runner, SQLiteSession
-from agent import agent
+from agent import create_agent
 
-# Single global session for the CLI
+# Single global session and agent for the CLI
 _cli_session = None
+_cli_agent = None
 
 def get_cli_session():
     """Get the global CLI session."""
@@ -15,9 +16,17 @@ def get_cli_session():
         _cli_session = SQLiteSession(session_id="cli", db_path=":memory:")
     return _cli_session
 
+def get_cli_agent():
+    """Get the global CLI agent with fresh state."""
+    global _cli_agent
+    if _cli_agent is None:
+        _cli_agent = create_agent()
+    return _cli_agent
+
 async def run_single_message(user_input: str):
     """Process a single message in the conversation."""
     session = get_cli_session()
+    agent = get_cli_agent()
     
     result = Runner.run_streamed(
         agent,
@@ -60,9 +69,12 @@ async def run_cli():
             if user_input.lower() == 'exit':
                 break
             elif user_input.lower() == 'clear':
+                global _cli_session, _cli_agent
                 session = get_cli_session()
                 await session.clear_session()
-                print("Conversation history cleared.\n")
+                # Reset agent to get fresh state (let old one be garbage collected)
+                _cli_agent = None
+                print("Conversation history and state cleared.\n")
                 continue
             elif not user_input:
                 continue

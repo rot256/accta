@@ -9,7 +9,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from agents import Runner
-from agent import agent
+from agent import create_agent
 from agents import SQLiteSession
 
 # Set up logging
@@ -34,22 +34,29 @@ frontend_build_path = current_dir.parent / "frontend" / "build"
 class ConnectionManager:
     def __init__(self):
         self.websocket_sessions: Dict[WebSocket, SQLiteSession] = {}
+        self.websocket_agents: Dict[WebSocket, Any] = {}
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         session_id = str(uuid.uuid4())
         session = SQLiteSession(session_id=session_id, db_path=":memory:")
+        agent = create_agent()  # Create fresh agent with new state per connection
         self.websocket_sessions[websocket] = session
+        self.websocket_agents[websocket] = agent
         return session_id, session
 
     def disconnect(self, websocket: WebSocket):
         self.websocket_sessions.pop(websocket, None)
+        self.websocket_agents.pop(websocket, None)
 
     async def send_personal_message(self, message: str, websocket: WebSocket):
         await websocket.send_text(message)
     
     def get_session(self, websocket: WebSocket) -> SQLiteSession:
         return self.websocket_sessions.get(websocket)
+    
+    def get_agent(self, websocket: WebSocket):
+        return self.websocket_agents.get(websocket)
 
 manager = ConnectionManager()
 
@@ -87,6 +94,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 command = message_data.get("command")
                 if command == "clear_session":
                     await session.clear_session()
+                    # Create new agent with fresh state
+                    manager.websocket_agents[websocket] = create_agent()
                     await manager.send_personal_message(
                         json.dumps({"type": "session_cleared", "session_id": session_id}),
                         websocket
@@ -112,6 +121,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 continue
             
             logger.debug("Starting agent processing...")
+            agent = manager.get_agent(websocket)
             result = Runner.run_streamed(
                 agent, 
                 input=user_input,
