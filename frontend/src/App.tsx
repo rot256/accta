@@ -12,7 +12,6 @@ function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const handleMessage = useCallback((data: AgentMessage) => {
-    console.log('Received message:', data);
     
     switch (data.type) {
       case 'start':
@@ -22,12 +21,17 @@ function App() {
       case 'tool_called':
         if (data.tool_name) {
           // Create a separate tool call message
+          const toolCallId = `tool-${Date.now()}-${Math.random()}`;
           const toolCallMessage: ChatMessageType = {
-            id: `tool-${Date.now()}-${Math.random()}`,
+            id: toolCallId,
             role: 'tool',
             content: `Called ${data.tool_name}`,
             timestamp: new Date(),
-            toolCall: { name: data.tool_name, args: data.tool_args || '' }
+            toolCall: { 
+              id: toolCallId,
+              name: data.tool_name, 
+              args: data.tool_args || '' 
+            }
           };
           
           setMessages(prev => [...prev, toolCallMessage]);
@@ -36,21 +40,29 @@ function App() {
         
       case 'tool_output':
         if (data.output) {
+          const convertedOutput = typeof data.output === 'string' ? data.output : JSON.stringify(data.output, null, 2);
           // Update the last tool message with the output
           setMessages(prev => {
-            const lastToolMessageIndex = prev.map(m => m.role).lastIndexOf('tool');
-            if (lastToolMessageIndex !== -1) {
-              const lastToolMessage = prev[lastToolMessageIndex];
+            // Find the first tool message that doesn't have output yet
+            const firstPendingToolIndex = prev.findIndex(m => 
+              m.role === 'tool' && m.toolCall && !m.toolCall.output
+            );
+            
+            if (firstPendingToolIndex !== -1) {
+              const toolMessage = prev[firstPendingToolIndex];
               const updatedToolMessage = {
-                ...lastToolMessage,
-                toolCall: lastToolMessage.toolCall ? 
-                  { ...lastToolMessage.toolCall, output: data.output } : 
+                ...toolMessage,
+                toolCall: toolMessage.toolCall ? 
+                  { 
+                    ...toolMessage.toolCall, 
+                    output: convertedOutput
+                  } : 
                   undefined
               };
               return [
-                ...prev.slice(0, lastToolMessageIndex),
+                ...prev.slice(0, firstPendingToolIndex),
                 updatedToolMessage,
-                ...prev.slice(lastToolMessageIndex + 1)
+                ...prev.slice(firstPendingToolIndex + 1)
               ];
             }
             return prev;
@@ -97,7 +109,6 @@ function App() {
         break;
         
       case 'complete':
-        console.log('🎯 COMPLETE event received');
         setIsProcessing(false);
         break;
         
@@ -116,7 +127,7 @@ function App() {
     }
   }, []);
 
-  const { isConnected, isConnecting, connect, sendMessage } = useWebSocket(handleMessage);
+  const { isConnected, connect, sendMessage } = useWebSocket(handleMessage);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

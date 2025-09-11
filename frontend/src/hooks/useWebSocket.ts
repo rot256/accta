@@ -33,9 +33,6 @@ export const useWebSocket = (onMessage?: (message: AgentMessage) => void) => {
     const delay = 10000;
     reconnectAttemptsRef.current++;
 
-    console.log(
-      `Scheduling reconnect in ${delay}ms (attempt ${reconnectAttemptsRef.current})`,
-    );
 
     reconnectTimeoutRef.current = setTimeout(() => {
       if (
@@ -63,13 +60,11 @@ export const useWebSocket = (onMessage?: (message: AgentMessage) => void) => {
       setIsConnected(true);
       setIsConnecting(false);
       reconnectAttemptsRef.current = 0; // Reset reconnect attempts on successful connection
-      console.log("WebSocket connected");
     };
 
     ws.onclose = () => {
       setIsConnected(false);
       setIsConnecting(false);
-      console.log("WebSocket disconnected");
 
       // Schedule reconnect if we should reconnect
       if (shouldReconnectRef.current) {
@@ -83,14 +78,10 @@ export const useWebSocket = (onMessage?: (message: AgentMessage) => void) => {
     };
 
     ws.onmessage = (event) => {
-      console.log("Raw WebSocket message received:", event.data);
       try {
         const data: AgentMessage = JSON.parse(event.data);
-        console.log("Parsed message:", data);
         if (messageHandlerRef.current) {
           messageHandlerRef.current(data);
-        } else {
-          console.warn("No message handler set");
         }
       } catch (error) {
         console.error("Failed to parse WebSocket message:", error);
@@ -123,13 +114,9 @@ export const useWebSocket = (onMessage?: (message: AgentMessage) => void) => {
   }, [clearReconnectTimeout]);
 
   const sendMessage = useCallback((message: string) => {
-    console.log("sendMessage called with:", message);
-    console.log("WebSocket state:", wsRef.current?.readyState);
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       const payload = JSON.stringify({ message });
-      console.log("Sending payload:", payload);
       wsRef.current.send(payload);
-      console.log("Message sent successfully");
     } else {
       console.error("WebSocket not open. State:", wsRef.current?.readyState);
     }

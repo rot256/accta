@@ -3,7 +3,7 @@ export interface AgentMessage {
   message?: string;
   tool_name?: string;
   tool_args?: string;
-  output?: string;
+  output?: string | object;
   delta?: string;
 }
 
@@ -18,6 +18,7 @@ export interface ChatMessage {
 }
 
 export interface ToolCall {
+  id?: string;
   name: string;
   args: string;
   output?: string;
