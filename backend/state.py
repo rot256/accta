@@ -202,6 +202,7 @@ class StoreMemory(State):
         self.documents = {}
         self.reconciliations = {}
         self.transactions = {}
+        self.invoices = {}
 
     def set_bank(
         self,
@@ -238,6 +239,9 @@ class StoreMemory(State):
     def list_reconciliations(self) -> List[Reconciliation]:
         return list(self.reconciliations.values())
 
+    def list_invoices(self) -> List[Invoice]:
+        return list(self.invoices.values())
+
     def store_supplier(
         self,
         obj: Supplier
@@ -261,6 +265,12 @@ class StoreMemory(State):
         obj: Reconciliation
     ):
         self.reconciliations[obj.id] = obj
+
+    def store_invoice(
+        self,
+        obj: Invoice
+    ):
+        self.invoices[obj.id] = obj
 
 def merge(objs, overwrites):
     objs_dict = {obj.id: obj for obj in objs}
@@ -347,6 +357,12 @@ class Transient(State):
         obj: Reconciliation
     ):
         self.reconciliations[obj.id] = obj
+
+    def store_invoice(
+        self,
+        obj: Invoice
+    ):
+        self.invoices[obj.id] = obj
 
 import json
 import pytest

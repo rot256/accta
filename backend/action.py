@@ -110,7 +110,7 @@ class NewInvoice(Action):
                 client=self.client_id,
                 amount=self.amount,
                 currency=self.currency,
-                created=datetime.datetime.now(),
+                created=datetime.date.today(),
                 due_date=self.due_date,
                 description=self.description
             )
