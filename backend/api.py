@@ -3,8 +3,10 @@ import json
 import os
 import logging
 import uuid
+import datetime
 from pathlib import Path
 from typing import Dict, Any
+from pydantic.json import pydantic_encoder
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -156,11 +158,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     elif event.name == 'tool_output':
                         output = event.item.output
                         logger.debug(f"Tool output: {output}")
+                        
+                        # Use Pydantic's built-in encoder for clean serialization
                         await manager.send_personal_message(
                             json.dumps({
                                 "type": "tool_output",
                                 "output": output
-                            }),
+                            }, default=pydantic_encoder),
                             websocket
                         )
                         
