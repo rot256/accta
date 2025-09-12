@@ -145,6 +145,7 @@ class Transaction:
         """Create a new invoice for the given client"""
         return self.add_action(
             NewInvoice(
+                invoice_id=uuid.uuid4(), # new invoice
                 client_id=client_id,
                 amount=amount,
                 currency=currency,

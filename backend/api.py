@@ -66,11 +66,14 @@ class ConnectionManager:
         agent = create_agent()  # Create fresh agent with new state per connection
         self.websocket_sessions[websocket] = session
         self.websocket_agents[websocket] = agent
+        logger.info(f"WebSocket connected: {websocket.client} (session: {session_id[:8]}..., total connections: {len(self.websocket_sessions)})")
         return session_id, session
 
     def disconnect(self, websocket: WebSocket):
-        self.websocket_sessions.pop(websocket, None)
+        session = self.websocket_sessions.pop(websocket, None)
         self.websocket_agents.pop(websocket, None)
+        session_id = session.session_id if session else "unknown"
+        logger.info(f"WebSocket disconnected: {websocket.client} (session: {session_id[:8] if session else 'unknown'}..., remaining connections: {len(self.websocket_sessions)})")
 
     async def send_personal_message(self, message: str, websocket: WebSocket):
         await websocket.send_text(message)
@@ -212,6 +215,10 @@ async def websocket_endpoint(websocket: WebSocket):
             logger.trace("Sent complete message")
 
     except WebSocketDisconnect:
+        logger.debug(f"WebSocket disconnected unexpectedly: {websocket.client}")
+        manager.disconnect(websocket)
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}", exc_info=True)
         manager.disconnect(websocket)
 
 @app.get("/api/health")

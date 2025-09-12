@@ -93,6 +93,7 @@ class UpdateSupplier(Action):
 
 @dataclass
 class NewInvoice(Action):
+    invoice_id: uuid.UUID
     amount: float
     currency: str
     client_id: uuid.UUID
@@ -102,25 +103,10 @@ class NewInvoice(Action):
     def action_type(self) -> str:
         return ActionType.NEW_INVOICE
 
-    def __init__(
-        self,
-        client_id: uuid.UUID,
-        amount: float,
-        currency: str,
-        due_date: datetime.date,
-        description: str,
-    ):
-        self.id = uuid.uuid4()
-        self.client_id = client_id
-        self.amount = amount
-        self.currency = currency
-        self.due_date = due_date
-        self.description = description
-
     def apply(self, st: State):
         st.store_invoice(
             Invoice(
-                id=self.id,
+                id=self.invoice_id,
                 client=self.client_id,
                 amount=self.amount,
                 currency=self.currency,
