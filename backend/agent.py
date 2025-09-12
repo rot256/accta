@@ -1,141 +1,64 @@
-from agents import Agent, function_tool, FunctionTool
-from datetime import datetime
-from dataclasses import dataclass
-
-import datetime
+import re
 import uuid
+import dataclasses
+import datetime
 
-from typing import Any, List, Tuple
+from agents import function_tool
+from agents.agent import Agent
 
-class ActionType:
-    NEW_CLIENT = "client"
-    NEW_SUPPLIER = "supplier"
-    NEW_INVOICE = "invoice"
-    RECONCILE = "reconcile"
+from state import Bank, BankTransaction, CompanyData, State, Transient, StoreMemory
+from action import Action, NewInvoice, UpdateClient, UpdateSupplier, Reconcile
+from typing import List, Tuple
 
-@dataclass
-class Action:
-    pass
-
-@dataclass
-class ActionUpdateClient(Action):
-    id: uuid.UUID
-    name: str
-    address: str
-    vat_number: str
-    email: str
-    phone: str
-    country_code: str
-
-@dataclass
-class ActionUpdateSupplier(Action):
-    id: uuid.UUID
-    name: str
-    address: str
-    vat_number: str
-    email: str
-    phone: str
-    country_code: str
-
-@dataclass
-class ActionNewInvoice(Action):
-    id: uuid.UUID
-    client_id: str
-
-@dataclass
-class ActionReconcile(Action):
-    id: uuid.UUID
-    bank_txs: List[uuid.UUID]
-    receipts: List[uuid.UUID]
-
-@dataclass
-class BankTransaction:
-    id: uuid.UUID
-    amount: float
-    currency: str
-    date: datetime.date
-    description: str
-
-@dataclass
-class Bank:
-    id: uuid.UUID
-    name: str
-    currency: str
-    IBAN: str
-    txs: List[BankTransaction] # todo: this touches a database
-
-class State:
-    def __init__(self):
+class Transaction:
+    def __init__(
+        self,
+        state: State, # base state
+    ):
         self.act_cnt = 1
+        self.state = state
+        # mapping from an action "name" to the action
         self.actions: List[Tuple[str, Action]] = []
-        self.banks: List[Bank] = [
-            Bank(
-                id=uuid.uuid4(),
-                name="Wise USD",
-                currency="USD",
-                IBAN="US1234567890",
-                txs=[
-                    BankTransaction(
-                        id=uuid.uuid4(),
-                        amount=100.0,
-                        currency="USD",
-                        date=datetime.date(2023, 1, 1),
-                        description="Initial deposit"
-                    ),
-                    BankTransaction(
-                        id=uuid.uuid4(),
-                        amount=50.0,
-                        currency="USD",
-                        date=datetime.date(2023, 2, 1),
-                        description="Monthly salary"
-                    )
-                ]
-            ),
-            Bank(
-                id=uuid.uuid4(),
-                name="Wise EUR",
-                currency="EUR",
-                IBAN="DE1234567890",
-                txs=[]
-            )
-        ]
+        self.transient = Transient(state)
 
     def context(self):
+        banks = self.transient.list_banks()
+        company = self.transient.company()
         return {
             "company": {
-                "name": "Acme Inc.",
-                "address": "123 Main St.",
-                "phone": "555-1234",
-                "email": "info@acme.com"
+                "name": company.name,
+                "address": company.address,
+                "phone": company.phone,
+                "email": company.email
             },
             "banks": {
-                "account1-wise-usd": {
-                    "name": "Wise USD",
-                    "currency": "USD",
-                    "IBAN": "US1234567890"
-                },
-                "account2-wise-eur": {
-                    "name": "Wise EUR",
-                    "currency": "EUR",
-                    "IBAN": "DE1234567890"
-                }
+                bank.id : {
+                    "name": bank.name,
+                    "currency": bank.currency,
+                    "IBAN": bank.iban,
+                } for bank in banks
             }
         }
 
     def add_action(
         self,
-        type: str,
         action: Action,
     ):
-        id = self.act_cnt
+        # apply the action.
+        # observe: this can fail
+        action.apply(self.transient)
+
+        # generate a unique id
+        # for the action for future reference
+        act_id = f"{action.action_type()}-{self.act_cnt}"
         self.act_cnt += 1
-        act_id = f"{type}-{id}"
         self.actions.append((act_id, action))
         return act_id
 
     def tool_action_clear(self):
         """Undo all actions"""
         self.actions = []
+        self.transient = Transient(self.state)
 
     def tool_action_undo(self, id: str):
         """Undoes the action with the given id"""
@@ -144,7 +67,20 @@ class State:
                 break
         else:
             return {"error": f"Action with id {id} not found"}
-        self.actions = [change for change in self.actions if change[0] != id]
+
+        # remove the action
+        actions = [change for change in self.actions if change[0] != id]
+
+        # reset state and try to replay all actions
+        # note, that this could fail:
+        # the error should be returned to the agent.
+        transient = Transient(self.state)
+        for (_, action) in actions:
+            action.apply(transient)
+
+        # write back the new state and actions
+        self.transient = transient
+        self.actions = actions
 
     def tool_query_client(
         self,
@@ -159,20 +95,18 @@ class State:
         email: str,
         phone: str,
         address: str,
-        country_code: str,
+        country: str,
         vat_number: str,
     ):
         """Register a new client for the busniess"""
-        id = uuid.uuid4()
         return self.add_action(
-            ActionType.NEW_CLIENT,
-            ActionUpdateClient(
-                id=id,
+            UpdateClient(
+                client_id=uuid.uuid4(),
                 name=name,
                 email=email,
                 address=address,
                 phone=phone,
-                country_code=country_code,
+                country=country,
                 vat_number=vat_number
             )
         )
@@ -183,35 +117,38 @@ class State:
         email: str,
         phone: str,
         address: str,
-        country_code: str,
+        country: str,
         vat_number: str,
     ):
         """Register a new supplier for the busniess"""
-        id = uuid.uuid4()
         return self.add_action(
-            ActionType.NEW_SUPPLIER,
-            ActionUpdateSupplier(
-                id=id,
+            UpdateSupplier(
+                supplier_id=uuid.uuid4(), # new supplier
                 name=name,
                 email=email,
                 phone=phone,
                 address=address,
-                country_code=country_code,
+                country=country,
                 vat_number=vat_number
             )
         )
 
     def tool_action_create_invoice(
         self,
-        client_id: str
+        client_id: uuid.UUID,
+        amount: float,
+        currency: str,
+        due_date: datetime.date,
+        description: str,
     ):
-        """Creates a new invoice for the given client"""
-        id = uuid.uuid4()
+        """Create a new invoice for the given client"""
         return self.add_action(
-            ActionType.NEW_INVOICE,
-            ActionNewInvoice(
-                id=id,
-                client_id=client_id
+            NewInvoice(
+                client_id=client_id,
+                amount=amount,
+                currency=currency,
+                due_date=due_date,
+                description=description,
             )
         )
 
@@ -220,188 +157,262 @@ class State:
         bank_txs: List[uuid.UUID],
         receipts: List[uuid.UUID],
     ):
-        """Reconcile a list of transactions for a given year and bank ID."""
-        id = uuid.uuid4()
+        """
+        Reconcile transactions with receipts/expenses.
+        """
         return self.add_action(
-            ActionType.RECONCILE,
-            ActionReconcile(
-                id=id,
+            Reconcile(
                 bank_txs=bank_txs,
-                receipts=receipts
+                docs_ids=receipts,
             )
         )
 
     def tool_query_current_time(self):
         """Get the current date and time."""
-        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    def tool_query_search_for_invoice(self, search_term: str):
-        """Search for invoices based on a search term."""
-        # TODO: Implement this function
-        return f"Invoices for '{search_term}':\n- Invoice 1\n- Invoice 2"
+        return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     def tool_query_list_unpaid_invoices(self):
-        """List outstanding invoices."""
-        return {
-            "invoice-1": {
-                "amount": 100.00,
-                "customer": "John Doe",
-                "due_date": "2023-01-15",
-                "status": "overdue"
-            },
-            "invoice-3": {
-                "amount": 200.00,
-                "customer": "Joes Heating",
-                "due_date": "2026-02-15",
-                "status": "pending"
-            }
-        }
+        """
+        List all unreconciled invoices:
+        invoices which have not been matched to a bank transaction.
+        """
+        invoices = []
+        for invoice in self.transient.list_invoices():
+            invoices.append(dataclasses.asdict(invoice))
+        return invoices
 
-    def tool_query_list_paid_invoices(self):
-        """List paid invoices."""
-        return {
-            "invoice-2": {
-                "amount": 200.00,
-                "customer": "Joes Heating",
-                "due_date": "2023-02-15",
-                "status": "paid"
-            }
-        }
+    def tool_query_list_invoices(self):
+        """
+        List all invoices.
+        """
+        invoices = []
+        for invoice in self.transient.list_invoices():
+            invoices.append(dataclasses.asdict(invoice))
+        return invoices
 
     def tool_query_for_document(
         self,
-        search_term: str,
+        search_regex: str,
     ):
-        """Search for documents based on a search term. Used for e.g. finding receipts"""
-        return {
-            "receipt-1": {
-                "date": "2023-01-01",
-                "amount": 300.00,
-                "description": "Jack hardware shop"
-            }
-        }
+        """
+        Search for documents based on a search term. Used for e.g. finding receipts
+        Supply the empty search_regex to obtain all documents.
+        """
+        docs = []
+        regex = re.compile(search_regex, re.IGNORECASE)
+        for doc in self.transient.list_documents():
+            if regex.search(doc.desc):
+                docs.append(dataclasses.asdict(doc))
+        return docs
 
     def tool_query_list_bank_transactions(
         self,
-        bank_id: str,
+        bank_id: uuid.UUID,
     ):
         """
         List bank transactions for a given bank ID.
         """
-        return {
-            "tx1": {
-                "date": "2023-01-01",
-                "amount": 100.00,
-                "description": "Payment for service"
-            },
-            "tx2": {
-                "date": "2023-02-01",
-                "amount": 200.00,
-                "description": "Payment for service"
-            },
-            "tx3": {
-                "date": "2023-03-01",
-                "amount": -300.00,
-                "description": "Bought working shoes"
-            }
-        }
+        return [
+            dataclasses.asdict(obj)
+            for obj in self.transient.list_transactions(bank_id)
+        ]
 
     def tool_query_list_unreconciled_transactions(
         self,
-        bank_id: str,
+        bank_id: uuid.UUID,
     ):
         """
         List unreconciled transactions for a given year and bank ID.
         """
-        return {
-            "tx4": {
-                "date": "2023-04-01",
-                "amount": 400.00,
-                "description": "Payment for service"
-            },
-            "tx5": {
-                "date": "2023-05-01",
-                "amount": -300.00,
-                "description": "Bought work shoes"
-            }
-        }
-
+        return [
+            dataclasses.asdict(obj)
+            for obj in self.transient.list_unreconciled_transactions(bank_id)
+        ]
 
 def create_agent():
     """Create a new agent instance with fresh state."""
-    state = State()
-    
+    st = StoreMemory()
+
+    st.set_bank(
+        Bank(
+            id=uuid.uuid4(),
+            currency="USD",
+            iban="US1234567890",
+            name="Bank of America"
+        ),
+        [
+            BankTransaction(
+                id=uuid.uuid4(),
+                date=datetime.date(2023, 1, 1),
+                amount=-100.00,
+                description="Bought working shoes"
+            ),
+            BankTransaction(
+                id=uuid.uuid4(),
+                date=datetime.date(2023, 2, 1),
+                amount=-50.00,
+                description="Rent"
+            )
+        ]
+    )
+
+    st.set_bank(
+        Bank(
+            id=uuid.uuid4(),
+            currency="USD",
+            iban="US9876543210",
+            name="Chase"
+        ),
+        [
+            BankTransaction(
+                id=uuid.uuid4(),
+                date=datetime.date(2023, 1, 1),
+                amount=100.00,
+                description="Salary"
+            ),
+            BankTransaction(
+                id=uuid.uuid4(),
+                date=datetime.date(2023, 2, 1),
+                amount=-50.00,
+                description="Rent"
+            )
+        ]
+    )
+
+    st.set_company(
+        CompanyData(
+            id=uuid.uuid4(),
+            name="Acme Inc.",
+            address="123 Main St, Anytown USA",
+            phone="555-1234",
+            email="info@acmeinc.com",
+            vat_number="123456789",
+            country="USA",
+        )
+    )
+
+    tx = Transaction(st)
+
     # Create function tools that access state via closure
     @function_tool
     def tool_query_client(name_query: str):
         """Query clients by name"""
-        return state.tool_query_client(name_query)
-    
+        return tx.tool_query_client(name_query)
+
     @function_tool
     def tool_query_current_time():
         """Get the current date and time."""
-        return state.tool_query_current_time()
-    
+        return tx.tool_query_current_time()
+
     @function_tool
-    def tool_query_for_document(search_term: str):
+    def tool_query_for_document(search_regex: str):
         """Search for documents based on a search term. Used for e.g. finding receipts"""
-        return state.tool_query_for_document(search_term)
-    
+        return tx.tool_query_for_document(search_regex)
+
     @function_tool
-    def tool_query_list_bank_transactions(bank_id: str):
+    def tool_query_list_bank_transactions(bank_id: uuid.UUID):
         """List bank transactions for a given bank ID."""
-        return state.tool_query_list_bank_transactions(bank_id)
-    
+        return tx.tool_query_list_bank_transactions(
+            bank_id=bank_id
+        )
+
     @function_tool
-    def tool_query_list_unreconciled_transactions(bank_id: str):
+    def tool_query_list_unreconciled_transactions(bank_id: uuid.UUID):
         """List unreconciled transactions for a given year and bank ID."""
-        return state.tool_query_list_unreconciled_transactions(bank_id)
-    
-    @function_tool
-    def tool_query_search_for_invoice(search_term: str):
-        """Search for invoices based on a search term."""
-        return state.tool_query_search_for_invoice(search_term)
-    
+        return tx.tool_query_list_unreconciled_transactions(
+            bank_id=bank_id
+        )
+
     @function_tool
     def tool_query_list_unpaid_invoices():
         """List outstanding invoices."""
-        return state.tool_query_list_unpaid_invoices()
-    
+        return tx.tool_query_list_unpaid_invoices()
+
     @function_tool
-    def tool_query_list_paid_invoices():
-        """List paid invoices."""
-        return state.tool_query_list_paid_invoices()
-    
+    def tool_query_list_invoices():
+        """List all invoices."""
+        return tx.tool_query_list_invoices()
+
     @function_tool
     def tool_action_clear():
         """Undo all actions"""
-        return state.tool_action_clear()
-    
+        return tx.tool_action_clear()
+
     @function_tool
     def tool_action_undo(id: str):
         """Undoes the action with the given id"""
-        return state.tool_action_undo(id)
-    
+        return tx.tool_action_undo(id)
+
     @function_tool
-    def tool_action_new_client(name: str, email: str, phone: str, address: str, country_code: str, vat_number: str):
+    def tool_action_new_client(
+        name: str,
+        email: str,
+        phone: str,
+        address: str,
+        country_code: str,
+        vat_number: str
+    ):
         """Register a new client for the business"""
-        return state.tool_action_new_client(name, email, phone, address, country_code, vat_number)
-    
+        return tx.tool_action_new_client(name, email, phone, address, country_code, vat_number)
+
     @function_tool
-    def tool_action_new_supplier(name: str, email: str, phone: str, address: str, country_code: str, vat_number: str):
-        """Register a new supplier for the business"""
-        return state.tool_action_new_supplier(name, email, phone, address, country_code, vat_number)
-    
+    def tool_action_new_supplier(
+        name: str,
+        email: str,
+        phone: str,
+        address: str,
+        country: str,
+        vat_number: str
+    ):
+        """
+        Register a new supplier for the business:
+
+        - name: name of the supplier
+        - email: email of the supplier
+        - phone: phone number of the supplier
+        - address: address of the supplier
+        - country: two letter country code of the supplier
+        - vat_number: vat number of the supplier
+
+        All fields are optional.
+        """
+        return tx.tool_action_new_supplier(
+            name=name,
+            email=email,
+            phone=phone,
+            address=address,
+            country=country,
+            vat_number=vat_number
+        )
+
     @function_tool
-    def tool_action_create_invoice(client_id: str):
+    def tool_action_create_invoice(
+        client_id: uuid.UUID,
+        amount: float,
+        currency: str,
+        description: str,
+        due_date: datetime.date
+    ):
         """Creates a new invoice for the given client"""
-        return state.tool_action_create_invoice(client_id)
-    
+        return tx.tool_action_create_invoice(
+            client_id=client_id,
+            amount=amount,
+            currency=currency,
+            description=description,
+            due_date=due_date,
+        )
+
     @function_tool
-    def tool_action_reconcile_transactions(bank_txs: List[uuid.UUID], receipts: List[uuid.UUID]):
+    def tool_action_reconcile_transactions(
+        bank_txs: List[uuid.UUID],
+        receipts: List[uuid.UUID],
+    ):
         """Reconcile a list of transactions for a given year and bank ID."""
-        return state.tool_action_reconcile_transactions(bank_txs, receipts)
-    
+        return tx.tool_action_reconcile_transactions(
+            bank_txs=bank_txs,
+            receipts=receipts,
+        )
+
     tools = [
         # Query tools
         tool_query_client,
@@ -409,9 +420,8 @@ def create_agent():
         tool_query_for_document,
         tool_query_list_bank_transactions,
         tool_query_list_unreconciled_transactions,
-        tool_query_search_for_invoice,
         tool_query_list_unpaid_invoices,
-        tool_query_list_paid_invoices,
+        tool_query_list_invoices,
         # Action tools
         tool_action_clear,
         tool_action_undo,
@@ -420,7 +430,7 @@ def create_agent():
         tool_action_create_invoice,
         tool_action_reconcile_transactions,
     ]
-    
+
     return Agent(
         name="Assistant",
         instructions=f"""You are a helpful assistant which helps explore and fix accounting details.
@@ -446,7 +456,7 @@ AVOID THE USE OF ALARMING/SENSTATIONALIST LANGUAGE.
 REMAIN PROFESSIONAL.
 
 Data about the entity:
-{state.context()}
+{tx.context()}
 
 If the user interacts with you in a different language than english, respond in the same language.
 Do not translate transaction descriptions or other details. Return these verbatim.

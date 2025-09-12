@@ -10,4 +10,5 @@ dependencies = [
     "uvicorn[standard]",
     "websockets",
     "python-multipart",
+    "pytest>=8.4.2",
 ]
