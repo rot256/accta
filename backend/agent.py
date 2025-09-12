@@ -37,7 +37,8 @@ class Transaction:
                     "currency": bank.currency,
                     "IBAN": bank.iban,
                 } for bank in banks
-            }
+            },
+            "current_date": datetime.date.today()
         }
 
     def add_action(
@@ -166,10 +167,6 @@ class Transaction:
                 docs_ids=receipts,
             )
         )
-
-    def tool_query_current_time(self):
-        """Get the current date and time."""
-        return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     def tool_query_list_unpaid_invoices(self):
         """
@@ -300,11 +297,6 @@ def create_agent():
         return tx.tool_query_client(name_query)
 
     @function_tool
-    def tool_query_current_time():
-        """Get the current date and time."""
-        return tx.tool_query_current_time()
-
-    @function_tool
     def tool_query_for_document(search_regex: str):
         """Search for documents based on a search term. Used for e.g. finding receipts"""
         return tx.tool_query_for_document(search_regex)
@@ -416,7 +408,6 @@ def create_agent():
     tools = [
         # Query tools
         tool_query_client,
-        tool_query_current_time,
         tool_query_for_document,
         tool_query_list_bank_transactions,
         tool_query_list_unreconciled_transactions,

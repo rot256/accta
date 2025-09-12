@@ -13,10 +13,31 @@ from fastapi.middleware.cors import CORSMiddleware
 from agents import Runner
 from agent import create_agent
 from agents import SQLiteSession
+from messages import (
+    BaseMessage,
+    SessionInitMessage,
+    SessionClearedMessage,
+    ConversationHistoryMessage,
+    ErrorMessage,
+    StartMessage,
+    CompleteMessage,
+    ToolCalledMessage,
+    ToolOutputMessage,
+    TextDeltaMessage,
+    TextDoneMessage
+)
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+# Add TRACE level for very verbose logging
+TRACE = 5
+logging.addLevelName(TRACE, "TRACE")
+def trace(self, message, *args, **kwargs):
+    if self.isEnabledFor(TRACE):
+        self._log(TRACE, message, args, **kwargs)
+logging.Logger.trace = trace
 
 app = FastAPI(title="Accta Agent API")
 
@@ -53,10 +74,14 @@ class ConnectionManager:
 
     async def send_personal_message(self, message: str, websocket: WebSocket):
         await websocket.send_text(message)
-    
+
+    async def send_message(self, message: BaseMessage, websocket: WebSocket):
+        """Send a Pydantic dataclass message as JSON to the websocket."""
+        await websocket.send_text(json.dumps(message, default=pydantic_encoder))
+
     def get_session(self, websocket: WebSocket) -> SQLiteSession:
         return self.websocket_sessions.get(websocket)
-    
+
     def get_agent(self, websocket: WebSocket):
         return self.websocket_agents.get(websocket)
 
@@ -64,33 +89,33 @@ manager = ConnectionManager()
 
 @app.websocket("/ws/agent")
 async def websocket_endpoint(websocket: WebSocket):
-    logger.debug(f"WebSocket connection attempt from {websocket.client}")
+    logger.debug(f"WebSocket connection from {websocket.client}")
     session_id, session = await manager.connect(websocket)
-    logger.debug(f"WebSocket connected successfully with session ID: {session_id}")
-    
+    logger.trace(f"WebSocket connected with session ID: {session_id}")
+
     # Send session ID to client
-    await manager.send_personal_message(
-        json.dumps({"type": "session_init", "session_id": session_id}),
+    await manager.send_message(
+        SessionInitMessage(session_id=session_id),
         websocket
     )
-    
+
     try:
         while True:
-            logger.debug("Waiting for message...")
+            logger.trace("Waiting for message...")
             data = await websocket.receive_text()
-            logger.debug(f"Received data: {data}")
-            
+            logger.trace(f"Received data: {data}")
+
             try:
                 message_data = json.loads(data)
-                logger.debug(f"Parsed message: {message_data}")
+                logger.trace(f"Parsed message: {message_data}")
             except json.JSONDecodeError as e:
                 logger.error(f"JSON decode error: {e}")
-                await manager.send_personal_message(
-                    json.dumps({"type": "error", "message": "Invalid JSON format"}),
+                await manager.send_message(
+                    ErrorMessage(message="Invalid JSON format"),
                     websocket
                 )
                 continue
-            
+
             # Handle session management commands
             if message_data.get("type") == "session_command":
                 command = message_data.get("command")
@@ -98,101 +123,94 @@ async def websocket_endpoint(websocket: WebSocket):
                     await session.clear_session()
                     # Create new agent with fresh state
                     manager.websocket_agents[websocket] = create_agent()
-                    await manager.send_personal_message(
-                        json.dumps({"type": "session_cleared", "session_id": session_id}),
+                    await manager.send_message(
+                        SessionClearedMessage(session_id=session_id),
                         websocket
                     )
                     continue
                 elif command == "get_conversation":
                     conversation_history = await session.get_items()
-                    await manager.send_personal_message(
-                        json.dumps({"type": "conversation_history", "history": conversation_history}),
+                    await manager.send_message(
+                        ConversationHistoryMessage(history=conversation_history),
                         websocket
                     )
                     continue
-                
+
             user_input = message_data.get("message", "")
-            logger.debug(f"User input: '{user_input}'")
-            
+            logger.trace(f"User input: '{user_input}'")
+
             if not user_input:
-                logger.debug("No message provided")
-                await manager.send_personal_message(
-                    json.dumps({"type": "error", "message": "No message provided"}),
+                logger.trace("No message provided")
+                await manager.send_message(
+                    ErrorMessage(message="No message provided"),
                     websocket
                 )
                 continue
-            
-            logger.debug("Starting agent processing...")
+
+            logger.trace("Starting agent processing...")
             agent = manager.get_agent(websocket)
             result = Runner.run_streamed(
-                agent, 
+                agent,
                 input=user_input,
                 session=session,
             )
-            
-            await manager.send_personal_message(
-                json.dumps({"type": "start", "message": "Agent is processing..."}),
+
+            await manager.send_message(
+                StartMessage(),
                 websocket
             )
-            logger.debug("Sent start message")
-            
-            logger.debug("Starting event stream...")
+            logger.trace("Sent start message")
+
+            logger.trace("Starting event stream...")
             async for event in result.stream_events():
-                logger.debug(f"Received event: {event.type} - {getattr(event, 'name', 'N/A')}")
-                
                 if event.type == 'run_item_stream_event':
+                    logger.trace(f"Received event: {event.type} - {event.name}")
                     if event.name == 'tool_called':
                         tool_name = event.item.raw_item.name
                         tool_args = event.item.raw_item.arguments
-                        logger.debug(f"Tool called: {tool_name} with args: {tool_args}")
-                        
-                        await manager.send_personal_message(
-                            json.dumps({
-                                "type": "tool_called",
-                                "tool_name": tool_name,
-                                "tool_args": tool_args
-                            }),
+                        logger.debug(f"Tool called: {tool_name}")
+                        logger.trace(f"Tool args: {tool_args}")
+
+                        await manager.send_message(
+                            ToolCalledMessage(
+                                tool_name=tool_name,
+                                tool_args=tool_args
+                            ),
                             websocket
                         )
-                        
+
                     elif event.name == 'tool_output':
                         output = event.item.output
-                        logger.debug(f"Tool output: {output}")
-                        
+                        logger.trace(f"Tool output: {output}")
+
                         # Use Pydantic's built-in encoder for clean serialization
-                        await manager.send_personal_message(
-                            json.dumps({
-                                "type": "tool_output",
-                                "output": output
-                            }, default=pydantic_encoder),
+                        await manager.send_message(
+                            ToolOutputMessage(output=output),
                             websocket
                         )
-                        
+
                 elif event.type == 'raw_response_event':
                     if event.data.type == 'response.output_text.delta':
-                        logger.debug(f"Text delta: {event.data.delta}")
-                        await manager.send_personal_message(
-                            json.dumps({
-                                "type": "text_delta",
-                                "delta": event.data.delta
-                            }),
+                        logger.trace(f"Text delta: {event.data.delta}")
+                        await manager.send_message(
+                            TextDeltaMessage(delta=event.data.delta),
                             websocket
                         )
-                        
+
                     elif event.data.type == 'response.output_text.done':
-                        logger.debug("Text done")
-                        await manager.send_personal_message(
-                            json.dumps({"type": "text_done"}),
+                        logger.trace("Text done")
+                        await manager.send_message(
+                            TextDoneMessage(),
                             websocket
                         )
-            
-            logger.debug("Event stream completed")
-            await manager.send_personal_message(
-                json.dumps({"type": "complete"}),
+
+            logger.trace("Event stream completed")
+            await manager.send_message(
+                CompleteMessage(),
                 websocket
             )
-            logger.debug("Sent complete message")
-                        
+            logger.trace("Sent complete message")
+
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
