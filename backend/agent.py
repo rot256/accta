@@ -534,10 +534,25 @@ def create_agent(action_callback: Optional[Callable] = None):
                         })
                         break
 
+            # Get the full supplier details
+            supplier_details = None
+            for supplier in tx.transient.list_suppliers():
+                if supplier.id == supplier_id:
+                    supplier_details = {
+                        'id': str(supplier.id),
+                        'name': supplier.name,
+                        'email': supplier.email,
+                        'phone': supplier.phone,
+                        'address': supplier.address,
+                        'vat_number': supplier.vat_number,
+                        'country': supplier.country
+                    }
+                    break
+
             action_args = {
                 'bank_txs': bank_tx_details,
                 'receipts': receipt_details,
-                'supplier_id': str(supplier_id)
+                'supplier_id': supplier_details if supplier_details else str(supplier_id)
             }
             tx.action_callback('action_created', {
                 'action_id': act_id,

@@ -52,6 +52,11 @@ export const ActionPane: React.FC<ActionPaneProps> = ({ actions }) => {
   const renderArgValue = (key: string, value: any): React.ReactNode => {
     if (value === null || value === undefined) return <span className="arg-null">Not specified</span>;
 
+    // Handle supplier details specially for reconciliation
+    if (key === 'supplier_id' && typeof value === 'object' && value !== null) {
+      return <span className="arg-text">{value.name || 'Unknown'}</span>;
+    }
+
     // Handle ID fields specially
     if (key.endsWith('_id') || key === 'client' || key === 'supplier') {
       return <span className="arg-id">{String(value).substring(0, 8)}...</span>;
@@ -149,9 +154,6 @@ export const ActionPane: React.FC<ActionPaneProps> = ({ actions }) => {
 
   return (
     <div className="action-pane">
-      <div className="action-pane-header">
-        <h3>Actions</h3>
-      </div>
 
       <div className="action-pane-list">
         {actions.map((action) => {
@@ -168,8 +170,8 @@ export const ActionPane: React.FC<ActionPaneProps> = ({ actions }) => {
                   <div className="args-list">
                     {Object.entries(parsedArgs)
                       .filter(([key]) => {
-                        // Hide supplier IDs completely from supplier actions
-                        if (key === 'supplier_id') return false;
+                        // Hide supplier IDs from supplier actions but show for reconciliation
+                        if (key === 'supplier_id' && action.name !== 'reconcile_transactions') return false;
                         return true;
                       })
                       .map(([key, value]) => (
@@ -189,6 +191,12 @@ export const ActionPane: React.FC<ActionPaneProps> = ({ actions }) => {
             </div>
           );
         })}
+      </div>
+
+      <div className="action-pane-footer">
+        <button className="apply-button">
+          Apply
+        </button>
       </div>
     </div>
   );
