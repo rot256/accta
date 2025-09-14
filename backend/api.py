@@ -1,18 +1,18 @@
 import asyncio
 import json
-import os
 import logging
 import uuid
-import datetime
+
 from pathlib import Path
 from typing import Dict, Any
 from pydantic.json import pydantic_encoder
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from agents import Runner
+from agents import SQLiteSession, Runner
+
 from agent import create_agent
-from agents import SQLiteSession
+
 from messages import (
     BaseMessage,
     SessionInitMessage,
@@ -28,7 +28,6 @@ from messages import (
     ActionCreatedMessage,
     ActionRemovedMessage,
     ActionClearMessage,
-    ActionsStateMessage
 )
 
 # Set up logging

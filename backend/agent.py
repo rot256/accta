@@ -1,20 +1,27 @@
 import re
 import uuid
-import dataclasses
 import datetime
-import json
 
 from agents import function_tool
 from agents.agent import Agent
 
-from state import Bank, BankTransaction, CompanyData, State, Transient, StoreMemory, create_test_state
-from action import Action, NewInvoice, UpdateClient, UpdateSupplier, Reconcile
-from typing import List, Tuple, Optional, Callable
+from state import Bank, BankTransaction, CompanyData, State, Transient, create_test_state
+from action import Action, NewInvoice, UpdateClient, UpdateSupplier, Expense, VATType
+from typing import Dict, List, Tuple, Optional, Callable, Union
+
+from pydantic.dataclasses import dataclass
+
+@dataclass
+class Context:
+    company: CompanyData
+    banks: List[Bank]
+    current_date: datetime.date
+    unreconciled_bank_transactions: Dict[uuid.UUID, List[BankTransaction]]
 
 class Transaction:
     def __init__(
         self,
-        state: State, # base state
+        state: State,
         action_callback: Optional[Callable] = None
     ):
         self.act_cnt = 1
@@ -24,25 +31,16 @@ class Transaction:
         self.transient = Transient(state)
         self.action_callback = action_callback
 
-    def context(self):
-        banks = self.transient.list_banks()
-        company = self.transient.company()
-        return {
-            "company": {
-                "name": company.name,
-                "address": company.address,
-                "phone": company.phone,
-                "email": company.email
-            },
-            "banks": {
-                bank.id : {
-                    "name": bank.name,
-                    "currency": bank.currency,
-                    "IBAN": bank.iban,
-                } for bank in banks
-            },
-            "current_date": datetime.date.today()
-        }
+    def context(self) -> Context:
+        return Context(
+            company=self.transient.company(),
+            banks=self.transient.list_banks(),
+            current_date=datetime.date.today(),
+            unreconciled_bank_transactions={
+                bank.id: self.transient.list_unreconciled_transactions(bank.id)
+                for bank in self.transient.list_banks()
+            }
+        )
 
     def add_action(
         self,
@@ -86,167 +84,6 @@ class Transaction:
         self.transient = transient
         self.actions = actions
 
-    def tool_query_client(
-        self,
-        name_query: str,
-    ):
-        """Query clients by name"""
-        pass
-
-    def tool_query_supplier(
-        self,
-        name_query: str,
-    ):
-        """Query suppliers by name"""
-        suppliers = []
-        for supplier in self.transient.list_suppliers():
-            if name_query.lower() in supplier.name.lower():
-                suppliers.append(supplier)
-        return suppliers
-
-    def tool_action_new_client(
-        self,
-        name: str,
-        email: str,
-        phone: str,
-        address: str,
-        country: str,
-        vat_number: str,
-    ):
-        """Register a new client for the busniess"""
-        client_id = uuid.uuid4()
-        act_id = self.add_action(
-            UpdateClient(
-                client_id=client_id,
-                name=name,
-                email=email,
-                address=address,
-                phone=phone,
-                country=country,
-                vat_number=vat_number
-            )
-        )
-        return {"action_id": act_id, "client_id": str(client_id)}
-
-    def tool_action_new_supplier(
-        self,
-        name: str,
-        email: str,
-        phone: str,
-        address: str,
-        country: str,
-        vat_number: str,
-    ):
-        """Register a new supplier for the busniess"""
-        supplier_id = uuid.uuid4()
-        act_id = self.add_action(
-            UpdateSupplier(
-                supplier_id=supplier_id, # new supplier
-                name=name,
-                email=email,
-                phone=phone,
-                address=address,
-                country=country,
-                vat_number=vat_number
-            )
-        )
-        return {"action_id": act_id, "supplier_id": str(supplier_id)}
-
-    def tool_action_create_invoice(
-        self,
-        client_id: uuid.UUID,
-        amount: float,
-        currency: str,
-        due_date: datetime.date,
-        description: str,
-    ):
-        """Create a new invoice for the given client"""
-        return self.add_action(
-            NewInvoice(
-                invoice_id=uuid.uuid4(), # new invoice
-                client_id=client_id,
-                amount=amount,
-                currency=currency,
-                due_date=due_date,
-                description=description,
-            )
-        )
-
-    def tool_action_reconcile_transactions(
-        self,
-        bank_txs: List[uuid.UUID],
-        receipts: List[uuid.UUID],
-        supplier_id: uuid.UUID,
-    ):
-        """
-        Reconcile transactions with receipts/expenses.
-        """
-        return self.add_action(
-            Reconcile(
-                bank_txs=bank_txs,
-                docs_ids=receipts,
-                supplier_id=supplier_id,
-            )
-        )
-
-    def tool_query_list_unpaid_invoices(self):
-        """
-        List all unreconciled invoices:
-        invoices which have not been matched to a bank transaction.
-        """
-        invoices = []
-        for invoice in self.transient.list_invoices():
-            invoices.append(invoice)
-        return invoices
-
-    def tool_query_list_invoices(self):
-        """
-        List all invoices.
-        """
-        invoices = []
-        for invoice in self.transient.list_invoices():
-            invoices.append(invoice)
-        return invoices
-
-    def tool_query_for_document(
-        self,
-        search_regex: str,
-    ):
-        """
-        Search for documents based on a search term. Used for e.g. finding receipts
-        Supply the empty search_regex to obtain all documents.
-
-        Observe that:
-        - Search is case-insensitive.
-        - You might need to search for multiple terms, it might not match exactly.
-        """
-        docs = []
-        regex = re.compile(search_regex, re.IGNORECASE)
-        for doc in self.transient.list_documents():
-            if regex.search(doc.description):
-                docs.append(doc)
-            elif regex.search(doc.content):
-                docs.append(doc)
-        return docs
-
-    def tool_query_list_bank_transactions(
-        self,
-        bank_id: uuid.UUID,
-    ):
-        """
-        List bank transactions for a given bank ID.
-        """
-        return self.transient.list_transactions(bank_id)
-
-    def tool_query_list_unreconciled_transactions(
-        self,
-        bank_id: uuid.UUID,
-    ):
-        """
-        List unreconciled transactions for a given year and bank ID.
-        """
-        return self.transient.list_unreconciled_transactions(bank_id)
-
 def create_agent(action_callback: Optional[Callable] = None):
     """Create a new agent instance with fresh state."""
     st = create_test_state()
@@ -269,7 +106,10 @@ def create_agent(action_callback: Optional[Callable] = None):
 
     @function_tool
     def tool_query_for_document(search_regex: str):
-        """Search for documents based on a search term. Used for e.g. finding receipts"""
+        """
+        Search for documents based on a search term. Used for e.g. finding receipts
+        Avoid searching for very specific phrases, e.g. instead of "Dodger Ram Receipt" search for "(truck)|(doger)|(ford)"
+        """
         docs = []
         regex = re.compile(search_regex, re.IGNORECASE)
         for doc in tx.transient.list_documents():
@@ -285,7 +125,7 @@ def create_agent(action_callback: Optional[Callable] = None):
         return tx.transient.list_transactions(bank_id)
 
     @function_tool
-    def tool_query_list_unreconciled_transactions(bank_id: uuid.UUID):
+    def tool_query_list_unreconciled_bank_transactions(bank_id: uuid.UUID):
         """List unreconciled transactions for a given year and bank ID."""
         return tx.transient.list_unreconciled_transactions(bank_id)
 
@@ -392,7 +232,7 @@ def create_agent(action_callback: Optional[Callable] = None):
         address: str,
         country: str,
         vat_number: str,
-        supplier_id: uuid.UUID = None
+        supplier_id: Union[uuid.UUID, None] = None
     ):
         """
         Create a new supplier or update an existing one:
@@ -489,16 +329,20 @@ def create_agent(action_callback: Optional[Callable] = None):
         return act_id
 
     @function_tool
-    def tool_action_reconcile_transactions(
+    def tool_action_expense(
         bank_txs: List[uuid.UUID],
         receipts: List[uuid.UUID],
         supplier_id: uuid.UUID,
+        description: str,
+        vat_type: VATType,
     ):
         """Reconcile a list of transactions for a given year and bank ID."""
-        action = Reconcile(
+        action = Expense(
+            vat_type=vat_type,
             bank_txs=bank_txs,
             docs_ids=receipts,
-            supplier_id=supplier_id,
+            supplier=supplier_id,
+            description=description,
         )
         action.apply(tx.transient)
         act_id = f"{action.action_type()}-{tx.act_cnt}"
@@ -569,7 +413,7 @@ def create_agent(action_callback: Optional[Callable] = None):
         tool_query_supplier,
         tool_query_for_document,
         tool_query_list_bank_transactions,
-        tool_query_list_unreconciled_transactions,
+        tool_query_list_unreconciled_bank_transactions,
         tool_query_list_unpaid_invoices,
         tool_query_list_invoices,
         # Action tools
@@ -578,39 +422,41 @@ def create_agent(action_callback: Optional[Callable] = None):
         tool_action_new_client,
         tool_action_update_supplier,
         tool_action_create_invoice,
-        tool_action_reconcile_transactions,
+        tool_action_expense,
     ]
+
+    instructions=f"""You are a helpful assistant which helps explore and fix accounting details.
+    You do not need to ask permission to perform actions.
+
+    IMPORTANT: Always format your responses using Markdown syntax when appropriate. This includes:
+    - Use **bold** for emphasis
+    - Use *italics* for subtle emphasis
+    - Use `code` for inline code snippets
+    - Use ```code blocks``` for multi-line code
+    - Use # ## ### for headings when structuring information
+    - Use - or * for bullet points when listing items
+    - Use > for blockquotes when citing or highlighting important information
+    - Use [links](url) for external references
+    - Use tables with | Column 1 | Column 2 | format for tabular data
+    - Use ~~strikethrough~~ for crossed-out text
+    - Use - [ ] and - [x] for task lists
+
+    The frontend supports GitHub Flavored Markdown (GFM) and will render your Markdown properly, so feel free to use rich formatting including tables to make your responses more readable and well-structured.
+
+    AVOID THE USE OF EMOJIS.
+    AVOID THE USE OF ALARMING/SENSTATIONALIST LANGUAGE.
+    REMAIN PROFESSIONAL.
+    DO NOT SHOW UUIDS/IDS, UNLESS SPECIFICALLY REQUESTED BY THE USER.
+
+    Data about the entity:
+    {tx.context()}
+
+    If the user interacts with you in a different language than english, respond in the same language.
+    Do not translate transaction descriptions or other details. Return these verbatim.
+    """
 
     return Agent(
         name="Assistant",
-        instructions=f"""You are a helpful assistant which helps explore and fix accounting details.
-You do not need to ask permission to perform actions.
-
-IMPORTANT: Always format your responses using Markdown syntax when appropriate. This includes:
-- Use **bold** for emphasis
-- Use *italics* for subtle emphasis
-- Use `code` for inline code snippets
-- Use ```code blocks``` for multi-line code
-- Use # ## ### for headings when structuring information
-- Use - or * for bullet points when listing items
-- Use > for blockquotes when citing or highlighting important information
-- Use [links](url) for external references
-- Use tables with | Column 1 | Column 2 | format for tabular data
-- Use ~~strikethrough~~ for crossed-out text
-- Use - [ ] and - [x] for task lists
-
-The frontend supports GitHub Flavored Markdown (GFM) and will render your Markdown properly, so feel free to use rich formatting including tables to make your responses more readable and well-structured.
-
-AVOID THE USE OF EMOJIS.
-AVOID THE USE OF ALARMING/SENSTATIONALIST LANGUAGE.
-REMAIN PROFESSIONAL.
-DO NOT SHOW UUIDS/IDS, UNLESS SPECIFICALLY REQUESTED BY THE USER.
-
-Data about the entity:
-{tx.context()}
-
-If the user interacts with you in a different language than english, respond in the same language.
-Do not translate transaction descriptions or other details. Return these verbatim.
-""",
+        instructions=instructions,
         tools=tools,
     )

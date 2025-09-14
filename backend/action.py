@@ -1,6 +1,7 @@
 import uuid
 import datetime
 
+from enum import Enum
 from typing import List
 from country import validate_country_code
 from state import Client, Invoice, Reconciliation, State, Supplier
@@ -10,7 +11,7 @@ class ActionType:
     UPDATE_CLIENT = "client"
     UPDATE_SUPPLIER = "supplier"
     NEW_INVOICE = "invoice"
-    RECONCILE = "reconcile"
+    EXPENSE = "expense"
 
 @dataclass
 class Action:
@@ -118,13 +119,20 @@ class NewInvoice(Action):
         )
 
 @dataclass
-class Reconcile(Action):
+class VATType(str):
+    VAT = "VAT"
+    NO_VAT = "NO_VAT"
+
+@dataclass
+class Expense(Action):
     bank_txs: List[uuid.UUID]
     docs_ids: List[uuid.UUID]
-    supplier_id: uuid.UUID
+    supplier: uuid.UUID
+    vat_type: VATType
+    description: str
 
     def action_type(self) -> str:
-        return ActionType.RECONCILE
+        return ActionType.EXPENSE
 
     def apply(self, st: State):
         # Check on the state that:
@@ -143,6 +151,6 @@ class Reconcile(Action):
                 id=uuid.uuid4(),
                 bank_txs=self.bank_txs,
                 docs_ids=self.docs_ids,
-                supplier_id=self.supplier_id,
+                supplier_id=self.supplier,
             )
         )
