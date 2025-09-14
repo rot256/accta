@@ -129,9 +129,7 @@ function App() {
 
       case 'action_removed':
         if (data.action_id) {
-          setActions(prev => prev.map(action =>
-            action.id === data.action_id ? { ...action, status: 'removed' } : action
-          ));
+          setActions(prev => prev.filter(action => action.id !== data.action_id));
         }
         break;
 

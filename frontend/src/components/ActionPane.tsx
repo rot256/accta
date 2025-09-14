@@ -9,7 +9,7 @@ export interface ActionItem {
   name: string;
   args: string;
   timestamp: Date;
-  status: 'active' | 'removed';
+  status: 'active';
 }
 
 export const ActionPane: React.FC<ActionPaneProps> = ({ actions }) => {
@@ -50,14 +50,10 @@ export const ActionPane: React.FC<ActionPaneProps> = ({ actions }) => {
           const parsedArgs = parseArgs(action.args);
 
           return (
-            <div key={action.id} className={`action-item ${action.status}`}>
+            <div key={action.id} className="action-item">
               <div className="action-item-header">
                 <span className="action-name">{formatActionName(action.name)}</span>
               </div>
-
-              {action.status === 'removed' && (
-                <div className="action-removed-badge">REMOVED</div>
-              )}
 
               <div className="action-arguments">
                 {typeof parsedArgs === 'object' && !Array.isArray(parsedArgs) ? (

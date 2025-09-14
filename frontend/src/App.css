@@ -21,7 +21,7 @@
     --action-pane-border: #3a5a8f;
     --action-pane-item-bg: #264263;
     --action-pane-item-hover: #2e4d75;
-    --action-pane-removed-bg: #3a2a4a;
+    /* Removed --action-pane-removed-bg - no longer needed */
     --action-pane-accent: #5a8fd8;
 }
 
@@ -617,6 +617,7 @@
     padding: 1rem;
     margin-bottom: 1rem;
     transition: all 0.2s ease;
+    animation: slideInFromRight 0.3s ease-out;
 }
 
 .action-item:hover {
@@ -624,9 +625,15 @@
     transform: translateX(2px);
 }
 
-.action-item.removed {
-    background: var(--action-pane-removed-bg);
-    opacity: 0.7;
+@keyframes slideInFromRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
 }
 
 .action-item-header {
@@ -647,18 +654,7 @@
     color: var(--action-pane-text-muted);
 }
 
-.action-removed-badge {
-    background: #8b3a62;
-    color: white;
-    padding: 0.2rem 0.6rem;
-    border-radius: 4px;
-    font-size: 0.7rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 0.5rem;
-    display: inline-block;
-}
+/* Removed .action-removed-badge - no longer needed */
 
 .action-arguments {
     font-size: 0.85rem;
