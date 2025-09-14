@@ -90,6 +90,17 @@ class Transaction:
         """Query clients by name"""
         pass
 
+    def tool_query_supplier(
+        self,
+        name_query: str,
+    ):
+        """Query suppliers by name"""
+        suppliers = []
+        for supplier in self.transient.list_suppliers():
+            if name_query.lower() in supplier.name.lower():
+                suppliers.append(supplier)
+        return suppliers
+
     def tool_action_new_client(
         self,
         name: str,
@@ -158,6 +169,7 @@ class Transaction:
         self,
         bank_txs: List[uuid.UUID],
         receipts: List[uuid.UUID],
+        supplier_id: uuid.UUID,
     ):
         """
         Reconcile transactions with receipts/expenses.
@@ -166,6 +178,7 @@ class Transaction:
             Reconcile(
                 bank_txs=bank_txs,
                 docs_ids=receipts,
+                supplier_id=supplier_id,
             )
         )
 
@@ -176,7 +189,7 @@ class Transaction:
         """
         invoices = []
         for invoice in self.transient.list_invoices():
-            invoices.append(dataclasses.asdict(invoice))
+            invoices.append(invoice)
         return invoices
 
     def tool_query_list_invoices(self):
@@ -185,7 +198,7 @@ class Transaction:
         """
         invoices = []
         for invoice in self.transient.list_invoices():
-            invoices.append(dataclasses.asdict(invoice))
+            invoices.append(invoice)
         return invoices
 
     def tool_query_for_document(
@@ -216,10 +229,7 @@ class Transaction:
         """
         List bank transactions for a given bank ID.
         """
-        return [
-            dataclasses.asdict(obj)
-            for obj in self.transient.list_transactions(bank_id)
-        ]
+        return self.transient.list_transactions(bank_id)
 
     def tool_query_list_unreconciled_transactions(
         self,
@@ -228,10 +238,7 @@ class Transaction:
         """
         List unreconciled transactions for a given year and bank ID.
         """
-        return [
-            dataclasses.asdict(obj)
-            for obj in self.transient.list_unreconciled_transactions(bank_id)
-        ]
+        return self.transient.list_unreconciled_transactions(bank_id)
 
 def create_agent():
     """Create a new agent instance with fresh state."""
@@ -242,46 +249,81 @@ def create_agent():
     @function_tool
     def tool_query_client(name_query: str):
         """Query clients by name"""
-        return tx.tool_query_client(name_query)
+        pass
+
+    @function_tool
+    def tool_query_supplier(name_query: str):
+        """Query suppliers by name"""
+        suppliers = []
+        for supplier in tx.transient.list_suppliers():
+            if name_query.lower() in supplier.name.lower():
+                suppliers.append(supplier)
+        return suppliers
 
     @function_tool
     def tool_query_for_document(search_regex: str):
         """Search for documents based on a search term. Used for e.g. finding receipts"""
-        return tx.tool_query_for_document(search_regex)
+        docs = []
+        regex = re.compile(search_regex, re.IGNORECASE)
+        for doc in tx.transient.list_documents():
+            if regex.search(doc.description):
+                docs.append(doc)
+            elif regex.search(doc.content):
+                docs.append(doc)
+        return docs
 
     @function_tool
     def tool_query_list_bank_transactions(bank_id: uuid.UUID):
         """List bank transactions for a given bank ID."""
-        return tx.tool_query_list_bank_transactions(
-            bank_id=bank_id
-        )
+        return tx.transient.list_transactions(bank_id)
 
     @function_tool
     def tool_query_list_unreconciled_transactions(bank_id: uuid.UUID):
         """List unreconciled transactions for a given year and bank ID."""
-        return tx.tool_query_list_unreconciled_transactions(
-            bank_id=bank_id
-        )
+        return tx.transient.list_unreconciled_transactions(bank_id)
 
     @function_tool
     def tool_query_list_unpaid_invoices():
         """List outstanding invoices."""
-        return tx.tool_query_list_unpaid_invoices()
+        invoices = []
+        for invoice in tx.transient.list_invoices():
+            invoices.append(invoice)
+        return invoices
 
     @function_tool
     def tool_query_list_invoices():
         """List all invoices."""
-        return tx.tool_query_list_invoices()
+        invoices = []
+        for invoice in tx.transient.list_invoices():
+            invoices.append(invoice)
+        return invoices
 
     @function_tool
     def tool_action_clear():
         """Undo all actions"""
-        return tx.tool_action_clear()
+        tx.actions = []
+        tx.transient = Transient(tx.state)
 
     @function_tool
     def tool_action_undo(id: str):
         """Undoes the action with the given id"""
-        return tx.tool_action_undo(id)
+        for (act_id, _) in tx.actions:
+            if act_id == id:
+                break
+        else:
+            return {"error": f"Action with id {id} not found"}
+
+        # remove the action
+        actions = [change for change in tx.actions if change[0] != id]
+
+        # reset state and try to replay all actions
+        transient = Transient(tx.state)
+        for (_, action) in actions:
+            action.apply(transient)
+
+        # write back the new state and actions
+        tx.transient = transient
+        tx.actions = actions
 
     @function_tool
     def tool_action_new_client(
@@ -293,7 +335,20 @@ def create_agent():
         vat_number: str
     ):
         """Register a new client for the business"""
-        return tx.tool_action_new_client(name, email, phone, address, country_code, vat_number)
+        action = UpdateClient(
+            client_id=uuid.uuid4(),
+            name=name,
+            email=email,
+            address=address,
+            phone=phone,
+            country=country_code,
+            vat_number=vat_number
+        )
+        action.apply(tx.transient)
+        act_id = f"{action.action_type()}-{tx.act_cnt}"
+        tx.act_cnt += 1
+        tx.actions.append((act_id, action))
+        return act_id
 
     @function_tool
     def tool_action_new_supplier(
@@ -316,7 +371,8 @@ def create_agent():
 
         All fields are optional.
         """
-        return tx.tool_action_new_supplier(
+        action = UpdateSupplier(
+            supplier_id=uuid.uuid4(),
             name=name,
             email=email,
             phone=phone,
@@ -324,6 +380,11 @@ def create_agent():
             country=country,
             vat_number=vat_number
         )
+        action.apply(tx.transient)
+        act_id = f"{action.action_type()}-{tx.act_cnt}"
+        tx.act_cnt += 1
+        tx.actions.append((act_id, action))
+        return act_id
 
     @function_tool
     def tool_action_create_invoice(
@@ -334,28 +395,42 @@ def create_agent():
         due_date: datetime.date
     ):
         """Creates a new invoice for the given client"""
-        return tx.tool_action_create_invoice(
+        action = NewInvoice(
+            invoice_id=uuid.uuid4(),
             client_id=client_id,
             amount=amount,
             currency=currency,
-            description=description,
             due_date=due_date,
+            description=description,
         )
+        action.apply(tx.transient)
+        act_id = f"{action.action_type()}-{tx.act_cnt}"
+        tx.act_cnt += 1
+        tx.actions.append((act_id, action))
+        return act_id
 
     @function_tool
     def tool_action_reconcile_transactions(
         bank_txs: List[uuid.UUID],
         receipts: List[uuid.UUID],
+        supplier_id: uuid.UUID,
     ):
         """Reconcile a list of transactions for a given year and bank ID."""
-        return tx.tool_action_reconcile_transactions(
+        action = Reconcile(
             bank_txs=bank_txs,
-            receipts=receipts,
+            docs_ids=receipts,
+            supplier_id=supplier_id,
         )
+        action.apply(tx.transient)
+        act_id = f"{action.action_type()}-{tx.act_cnt}"
+        tx.act_cnt += 1
+        tx.actions.append((act_id, action))
+        return act_id
 
     tools = [
         # Query tools
         tool_query_client,
+        tool_query_supplier,
         tool_query_for_document,
         tool_query_list_bank_transactions,
         tool_query_list_unreconciled_transactions,

@@ -34,6 +34,7 @@ class Reconciliation(Obj):
     id: uuid.UUID
     bank_txs: List[uuid.UUID]
     docs_ids: List[uuid.UUID]
+    supplier_id: uuid.UUID
 
 @dataclass
 class Supplier(Obj):
@@ -677,7 +678,8 @@ def test_json_serialization_deserialization():
     reconciliation = Reconciliation(
         id=uuid.uuid4(),
         bank_txs=[bank_tx.id],
-        docs_ids=[document.id]
+        docs_ids=[document.id],
+        supplier_id=supplier.id
     )
 
     # List of all objects to test

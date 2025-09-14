@@ -120,6 +120,7 @@ class NewInvoice(Action):
 class Reconcile(Action):
     bank_txs: List[uuid.UUID]
     docs_ids: List[uuid.UUID]
+    supplier_id: uuid.UUID
 
     def action_type(self) -> str:
         return ActionType.RECONCILE
@@ -140,5 +141,6 @@ class Reconcile(Action):
                 id=uuid.uuid4(),
                 bank_txs=self.bank_txs,
                 docs_ids=self.docs_ids,
+                supplier_id=self.supplier_id,
             )
         )
