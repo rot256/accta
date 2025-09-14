@@ -104,6 +104,7 @@ class NewInvoice(Action):
         return ActionType.NEW_INVOICE
 
     def apply(self, st: State):
+        st.check_client_id(self.client_id)
         st.store_invoice(
             Invoice(
                 id=self.invoice_id,

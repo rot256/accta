@@ -157,6 +157,17 @@ class State:
             if id not in valid_doc_ids:
                 raise ValueError(f"Invalid document ID: {id}")
 
+    def check_client_id(self, client_id: uuid.UUID):
+        """
+        Checks if the given client ID is valid.
+        """
+        valid_client_ids = set()
+        for client in self.list_clients():
+            valid_client_ids.add(client.id)
+
+        if client_id not in valid_client_ids:
+            raise ValueError(f"Invalid client ID: {client_id}")
+
     def store_client(
         self,
         obj: Client
