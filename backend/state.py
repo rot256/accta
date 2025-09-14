@@ -157,6 +157,32 @@ class State:
             if id not in valid_doc_ids:
                 raise ValueError(f"Invalid document ID: {id}")
 
+    def check_transactions_not_reconciled(self, tx_ids: List[uuid.UUID]):
+        """
+        Checks that the given transaction IDs are not already reconciled.
+        """
+        reconciled_tx_ids = set()
+        for recon in self.list_reconciliations():
+            for tx_id in recon.bank_txs:
+                reconciled_tx_ids.add(tx_id)
+
+        for tx_id in tx_ids:
+            if tx_id in reconciled_tx_ids:
+                raise ValueError(f"Transaction ID {tx_id} is already reconciled")
+
+    def check_documents_not_reconciled(self, doc_ids: List[uuid.UUID]):
+        """
+        Checks that the given document IDs are not already reconciled.
+        """
+        reconciled_doc_ids = set()
+        for recon in self.list_reconciliations():
+            for doc_id in recon.docs_ids:
+                reconciled_doc_ids.add(doc_id)
+
+        for doc_id in doc_ids:
+            if doc_id in reconciled_doc_ids:
+                raise ValueError(f"Document ID {doc_id} is already reconciled")
+
     def check_client_id(self, client_id: uuid.UUID):
         """
         Checks if the given client ID is valid.

@@ -135,7 +135,8 @@ class Reconcile(Action):
         st.check_document_ids(self.docs_ids)
 
         # 3. the bank_txs and docs_ids are not already reconciled
-        # TODO: Implement this check
+        st.check_transactions_not_reconciled(self.bank_txs)
+        st.check_documents_not_reconciled(self.docs_ids)
 
         st.store_reconciliation(
             Reconciliation(
