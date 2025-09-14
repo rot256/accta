@@ -17,6 +17,7 @@ export const ActionPane: React.FC<ActionPaneProps> = ({ actions }) => {
     const actionMap: { [key: string]: string } = {
       'new_client': 'Create Client',
       'new_supplier': 'Create Supplier',
+      'update_supplier': 'Update Supplier',
       'create_invoice': 'Create Invoice',
       'reconcile_transactions': 'Reconcile'
     };
@@ -59,6 +60,55 @@ export const ActionPane: React.FC<ActionPaneProps> = ({ actions }) => {
     // Handle arrays
     if (Array.isArray(value)) {
       if (value.length === 0) return <span className="arg-empty">None</span>;
+
+      // Handle transaction details for reconcile actions
+      if (key === 'bank_txs') {
+        if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null) {
+          return (
+            <div className="arg-array">
+              {value.map((transaction: any, index) => (
+                <div key={index} className="transaction-item">
+                  <div><strong>Bank:</strong> {transaction?.account_name || 'Unknown'}</div>
+                  <div><strong>Date:</strong> {transaction?.date || 'Unknown'}</div>
+                  <div><strong>Amount:</strong> {transaction?.amount || '0'} {transaction?.currency || ''}</div>
+                  {index < value.length - 1 && <br />}
+                </div>
+              ))}
+            </div>
+          );
+        }
+        // Fallback for non-object data
+        return (
+          <div className="arg-array">
+            <pre>{JSON.stringify(value, null, 2)}</pre>
+          </div>
+        );
+      }
+
+      // Handle receipt details for reconcile actions
+      if (key === 'receipts') {
+        if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null) {
+          return (
+            <div className="arg-array">
+              {value.map((receipt: any, index) => (
+                <div key={index} className="receipt-item">
+                  <div>{receipt?.name || 'Unnamed receipt'}</div>
+                  <div>{receipt?.description || 'No description'}</div>
+                  {index < value.length - 1 && <br />}
+                </div>
+              ))}
+            </div>
+          );
+        }
+        // Fallback for non-object data
+        return (
+          <div className="arg-array">
+            <pre>{JSON.stringify(value, null, 2)}</pre>
+          </div>
+        );
+      }
+
+      // Default array handling for other cases
       return (
         <div className="arg-array">
           {value.map((item, index) => (
@@ -116,12 +166,19 @@ export const ActionPane: React.FC<ActionPaneProps> = ({ actions }) => {
               <div className="action-arguments">
                 {typeof parsedArgs === 'object' && !Array.isArray(parsedArgs) ? (
                   <div className="args-list">
-                    {Object.entries(parsedArgs).map(([key, value]) => (
-                      <div key={key} className="arg-item">
-                        <div className="arg-label">{formatFieldLabel(key)}:</div>
-                        <div className="arg-value">{renderArgValue(key, value)}</div>
-                      </div>
-                    ))}
+                    {Object.entries(parsedArgs)
+                      .filter(([key]) => {
+                        // Hide supplier IDs completely from supplier actions
+                        if (key === 'supplier_id') return false;
+                        return true;
+                      })
+                      .map(([key, value]) => (
+                        <div key={key} className="arg-item">
+                          <div className="arg-label">{formatFieldLabel(key)}:</div>
+                          <div className="arg-value">{renderArgValue(key, value)}</div>
+                        </div>
+                      ))
+                    }
                   </div>
                 ) : (
                   <div className="args-raw">

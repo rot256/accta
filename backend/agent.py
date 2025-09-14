@@ -385,16 +385,17 @@ def create_agent(action_callback: Optional[Callable] = None):
         return {"action_id": act_id, "client_id": str(client_id)}
 
     @function_tool
-    def tool_action_new_supplier(
+    def tool_action_update_supplier(
         name: str,
         email: str,
         phone: str,
         address: str,
         country: str,
-        vat_number: str
+        vat_number: str,
+        supplier_id: uuid.UUID = None
     ):
         """
-        Register a new supplier for the business:
+        Create a new supplier or update an existing one:
 
         - name: name of the supplier
         - email: email of the supplier
@@ -402,10 +403,17 @@ def create_agent(action_callback: Optional[Callable] = None):
         - address: address of the supplier
         - country: two letter country code of the supplier
         - vat_number: vat number of the supplier
+        - supplier_id: UUID of existing supplier to update (optional - if not provided, creates new supplier)
 
-        All fields are optional.
+        All fields except supplier_id are optional.
         """
-        supplier_id = uuid.uuid4()
+        # If no supplier_id provided, create a new supplier
+        if supplier_id is None:
+            supplier_id = uuid.uuid4()
+            is_new_supplier = True
+        else:
+            is_new_supplier = False
+
         action = UpdateSupplier(
             supplier_id=supplier_id,
             name=name,
@@ -423,6 +431,7 @@ def create_agent(action_callback: Optional[Callable] = None):
         # Emit creation event
         if tx.action_callback:
             action_args = {
+                'supplier_id': str(supplier_id),
                 'name': name,
                 'email': email,
                 'phone': phone,
@@ -432,7 +441,7 @@ def create_agent(action_callback: Optional[Callable] = None):
             }
             tx.action_callback('action_created', {
                 'action_id': act_id,
-                'action_type': 'new_supplier',
+                'action_type': 'new_supplier' if is_new_supplier else 'update_supplier',
                 'action_args': action_args,
                 'timestamp': datetime.datetime.now().isoformat()
             })
@@ -498,9 +507,36 @@ def create_agent(action_callback: Optional[Callable] = None):
 
         # Emit creation event
         if tx.action_callback:
+            # Get the full transaction and document details
+            bank_tx_details = []
+            for tx_id in bank_txs:
+                for bank in tx.transient.list_banks():
+                    for transaction in tx.transient.list_transactions(bank.id):
+                        if transaction.id == tx_id:
+                            bank_tx_details.append({
+                                'id': str(transaction.id),
+                                'amount': transaction.amount,
+                                'date': transaction.date.isoformat(),
+                                'description': transaction.description,
+                                'account_name': bank.name,
+                                'currency': bank.currency
+                            })
+                            break
+
+            receipt_details = []
+            for receipt_id in receipts:
+                for document in tx.transient.list_documents():
+                    if document.id == receipt_id:
+                        receipt_details.append({
+                            'id': str(document.id),
+                            'name': document.name,
+                            'description': document.description
+                        })
+                        break
+
             action_args = {
-                'bank_txs': [str(tx_id) for tx_id in bank_txs],
-                'receipts': [str(receipt_id) for receipt_id in receipts],
+                'bank_txs': bank_tx_details,
+                'receipts': receipt_details,
                 'supplier_id': str(supplier_id)
             }
             tx.action_callback('action_created', {
@@ -525,7 +561,7 @@ def create_agent(action_callback: Optional[Callable] = None):
         tool_action_clear,
         tool_action_undo,
         tool_action_new_client,
-        tool_action_new_supplier,
+        tool_action_update_supplier,
         tool_action_create_invoice,
         tool_action_reconcile_transactions,
     ]
@@ -553,6 +589,7 @@ The frontend supports GitHub Flavored Markdown (GFM) and will render your Markdo
 AVOID THE USE OF EMOJIS.
 AVOID THE USE OF ALARMING/SENSTATIONALIST LANGUAGE.
 REMAIN PROFESSIONAL.
+DO NOT SHOW UUIDS/IDS, UNLESS SPECIFICALLY REQUESTED BY THE USER.
 
 Data about the entity:
 {tx.context()}
