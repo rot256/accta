@@ -3,12 +3,14 @@ import { useWebSocket } from './hooks/useWebSocket';
 import { ChatMessage } from './components/ChatMessage';
 import { ChatInput } from './components/ChatInput';
 import { LoadingMessage } from './components/LoadingMessage';
+import { ActionPane, ActionItem } from './components/ActionPane';
 import { ChatMessage as ChatMessageType, AgentMessage } from './types';
 import './App.css';
 
 function App() {
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [actions, setActions] = useState<ActionItem[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const handleMessage = useCallback((data: AgentMessage) => {
@@ -27,13 +29,13 @@ function App() {
             role: 'tool',
             content: `Called ${data.tool_name}`,
             timestamp: new Date(),
-            toolCall: { 
+            toolCall: {
               id: toolCallId,
-              name: data.tool_name, 
-              args: data.tool_args || '' 
+              name: data.tool_name,
+              args: data.tool_args || ''
             }
           };
-          
+
           setMessages(prev => [...prev, toolCallMessage]);
         }
         break;
@@ -111,7 +113,32 @@ function App() {
       case 'complete':
         setIsProcessing(false);
         break;
-        
+
+      case 'action_created':
+        if (data.action_id && data.action_type && data.timestamp) {
+          const newAction: ActionItem = {
+            id: data.action_id,
+            name: data.action_type,
+            args: JSON.stringify(data.action_args || {}),
+            timestamp: new Date(data.timestamp),
+            status: 'active'
+          };
+          setActions(prev => [...prev, newAction]);
+        }
+        break;
+
+      case 'action_removed':
+        if (data.action_id) {
+          setActions(prev => prev.map(action =>
+            action.id === data.action_id ? { ...action, status: 'removed' } : action
+          ));
+        }
+        break;
+
+      case 'action_clear':
+        setActions([]);
+        break;
+
       case 'error':
         setIsProcessing(false);
         setMessages(prev => [
@@ -159,26 +186,29 @@ function App() {
 
   return (
     <div className="App">
-      
-      <main className="chat-container">
-        <div className="messages">
-          {messages.map((message) => (
-            <ChatMessage
-              key={message.id}
-              message={message}
-            />
-          ))}
-          {isProcessing && messages.length > 0 && !messages[messages.length - 1]?.isStreaming && (
-            <LoadingMessage />
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-        
-        <ChatInput
-          onSendMessage={handleSendMessage}
-          disabled={!isConnected || isProcessing}
-        />
-      </main>
+      <div className="app-container">
+        {actions.length > 0 && <ActionPane actions={actions} />}
+
+        <main className="chat-container">
+          <div className="messages">
+            {messages.map((message) => (
+              <ChatMessage
+                key={message.id}
+                message={message}
+              />
+            ))}
+            {isProcessing && messages.length > 0 && !messages[messages.length - 1]?.isStreaming && (
+              <LoadingMessage />
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          <ChatInput
+            onSendMessage={handleSendMessage}
+            disabled={!isConnected || isProcessing}
+          />
+        </main>
+      </div>
     </div>
   );
 }

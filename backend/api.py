@@ -24,7 +24,11 @@ from messages import (
     ToolCalledMessage,
     ToolOutputMessage,
     TextDeltaMessage,
-    TextDoneMessage
+    TextDoneMessage,
+    ActionCreatedMessage,
+    ActionRemovedMessage,
+    ActionClearMessage,
+    ActionsStateMessage
 )
 
 # Set up logging
@@ -58,20 +62,28 @@ class ConnectionManager:
     def __init__(self):
         self.websocket_sessions: Dict[WebSocket, SQLiteSession] = {}
         self.websocket_agents: Dict[WebSocket, Any] = {}
+        self.websocket_actions: Dict[WebSocket, List[Dict]] = {}  # Track actions per connection
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         session_id = str(uuid.uuid4())
         session = SQLiteSession(session_id=session_id, db_path=":memory:")
-        agent = create_agent()  # Create fresh agent with new state per connection
+
+        # Create action callback for this websocket
+        def action_callback(event_type: str, data: Dict):
+            asyncio.create_task(self._handle_action_event(websocket, event_type, data))
+
+        agent = create_agent(action_callback)  # Create fresh agent with action callback
         self.websocket_sessions[websocket] = session
         self.websocket_agents[websocket] = agent
+        self.websocket_actions[websocket] = []
         logger.info(f"WebSocket connected: {websocket.client} (session: {session_id[:8]}..., total connections: {len(self.websocket_sessions)})")
         return session_id, session
 
     def disconnect(self, websocket: WebSocket):
         session = self.websocket_sessions.pop(websocket, None)
         self.websocket_agents.pop(websocket, None)
+        self.websocket_actions.pop(websocket, None)
         session_id = session.session_id if session else "unknown"
         logger.info(f"WebSocket disconnected: {websocket.client} (session: {session_id[:8] if session else 'unknown'}..., remaining connections: {len(self.websocket_sessions)})")
 
@@ -87,6 +99,59 @@ class ConnectionManager:
 
     def get_agent(self, websocket: WebSocket):
         return self.websocket_agents.get(websocket)
+
+    async def _handle_action_event(self, websocket: WebSocket, event_type: str, data: Dict):
+        """Handle action events from the backend and send to frontend"""
+        try:
+            if event_type == 'action_created':
+                # Add to local actions list
+                if websocket in self.websocket_actions:
+                    self.websocket_actions[websocket].append({
+                        'id': data['action_id'],
+                        'type': data['action_type'],
+                        'args': data['action_args'],
+                        'timestamp': data['timestamp'],
+                        'status': 'active'
+                    })
+
+                # Send to frontend
+                await self.send_message(
+                    ActionCreatedMessage(
+                        action_id=data['action_id'],
+                        action_type=data['action_type'],
+                        action_args=data['action_args'],
+                        timestamp=data['timestamp']
+                    ),
+                    websocket
+                )
+
+            elif event_type == 'action_removed':
+                # Update local actions list
+                if websocket in self.websocket_actions:
+                    for action in self.websocket_actions[websocket]:
+                        if action['id'] == data['action_id']:
+                            action['status'] = 'removed'
+                            break
+
+                # Send to frontend
+                await self.send_message(
+                    ActionRemovedMessage(action_id=data['action_id']),
+                    websocket
+                )
+
+            elif event_type == 'action_clear':
+                # Clear all actions
+                if websocket in self.websocket_actions:
+                    self.websocket_actions[websocket] = []
+
+                # Send to frontend
+                await self.send_message(
+                    ActionClearMessage(),
+                    websocket
+                )
+
+        except Exception as e:
+            logger.error(f"Error handling action event: {e}")
 
 manager = ConnectionManager()
 
@@ -124,8 +189,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 command = message_data.get("command")
                 if command == "clear_session":
                     await session.clear_session()
+                    # Create action callback for this websocket
+                    def action_callback(event_type: str, data: Dict):
+                        asyncio.create_task(manager._handle_action_event(websocket, event_type, data))
+
                     # Create new agent with fresh state
-                    manager.websocket_agents[websocket] = create_agent()
+                    manager.websocket_agents[websocket] = create_agent(action_callback)
+                    manager.websocket_actions[websocket] = []  # Clear actions
                     await manager.send_message(
                         SessionClearedMessage(session_id=session_id),
                         websocket

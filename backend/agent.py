@@ -2,24 +2,27 @@ import re
 import uuid
 import dataclasses
 import datetime
+import json
 
 from agents import function_tool
 from agents.agent import Agent
 
 from state import Bank, BankTransaction, CompanyData, State, Transient, StoreMemory, create_test_state
 from action import Action, NewInvoice, UpdateClient, UpdateSupplier, Reconcile
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Callable
 
 class Transaction:
     def __init__(
         self,
         state: State, # base state
+        action_callback: Optional[Callable] = None
     ):
         self.act_cnt = 1
         self.state = state
         # mapping from an action "name" to the action
         self.actions: List[Tuple[str, Action]] = []
         self.transient = Transient(state)
+        self.action_callback = action_callback
 
     def context(self):
         banks = self.transient.list_banks()
@@ -111,9 +114,10 @@ class Transaction:
         vat_number: str,
     ):
         """Register a new client for the busniess"""
-        return self.add_action(
+        client_id = uuid.uuid4()
+        act_id = self.add_action(
             UpdateClient(
-                client_id=uuid.uuid4(),
+                client_id=client_id,
                 name=name,
                 email=email,
                 address=address,
@@ -122,6 +126,7 @@ class Transaction:
                 vat_number=vat_number
             )
         )
+        return {"action_id": act_id, "client_id": str(client_id)}
 
     def tool_action_new_supplier(
         self,
@@ -133,9 +138,10 @@ class Transaction:
         vat_number: str,
     ):
         """Register a new supplier for the busniess"""
-        return self.add_action(
+        supplier_id = uuid.uuid4()
+        act_id = self.add_action(
             UpdateSupplier(
-                supplier_id=uuid.uuid4(), # new supplier
+                supplier_id=supplier_id, # new supplier
                 name=name,
                 email=email,
                 phone=phone,
@@ -144,6 +150,7 @@ class Transaction:
                 vat_number=vat_number
             )
         )
+        return {"action_id": act_id, "supplier_id": str(supplier_id)}
 
     def tool_action_create_invoice(
         self,
@@ -240,10 +247,10 @@ class Transaction:
         """
         return self.transient.list_unreconciled_transactions(bank_id)
 
-def create_agent():
+def create_agent(action_callback: Optional[Callable] = None):
     """Create a new agent instance with fresh state."""
     st = create_test_state()
-    tx = Transaction(st)
+    tx = Transaction(st, action_callback)
 
     # Create function tools that access state via closure
     @function_tool
@@ -301,6 +308,10 @@ def create_agent():
     @function_tool
     def tool_action_clear():
         """Undo all actions"""
+        # Emit clear event (more efficient than individual removals)
+        if tx.action_callback:
+            tx.action_callback('action_clear', {})
+
         tx.actions = []
         tx.transient = Transient(tx.state)
 
@@ -312,6 +323,10 @@ def create_agent():
                 break
         else:
             return {"error": f"Action with id {id} not found"}
+
+        # Emit removal event
+        if tx.action_callback:
+            tx.action_callback('action_removed', {'action_id': id})
 
         # remove the action
         actions = [change for change in tx.actions if change[0] != id]
@@ -335,8 +350,9 @@ def create_agent():
         vat_number: str
     ):
         """Register a new client for the business"""
+        client_id = uuid.uuid4()
         action = UpdateClient(
-            client_id=uuid.uuid4(),
+            client_id=client_id,
             name=name,
             email=email,
             address=address,
@@ -348,7 +364,25 @@ def create_agent():
         act_id = f"{action.action_type()}-{tx.act_cnt}"
         tx.act_cnt += 1
         tx.actions.append((act_id, action))
-        return act_id
+
+        # Emit creation event
+        if tx.action_callback:
+            action_args = {
+                'name': name,
+                'email': email,
+                'phone': phone,
+                'address': address,
+                'country_code': country_code,
+                'vat_number': vat_number
+            }
+            tx.action_callback('action_created', {
+                'action_id': act_id,
+                'action_type': 'new_client',
+                'action_args': action_args,
+                'timestamp': datetime.datetime.now().isoformat()
+            })
+
+        return {"action_id": act_id, "client_id": str(client_id)}
 
     @function_tool
     def tool_action_new_supplier(
@@ -371,8 +405,9 @@ def create_agent():
 
         All fields are optional.
         """
+        supplier_id = uuid.uuid4()
         action = UpdateSupplier(
-            supplier_id=uuid.uuid4(),
+            supplier_id=supplier_id,
             name=name,
             email=email,
             phone=phone,
@@ -384,7 +419,25 @@ def create_agent():
         act_id = f"{action.action_type()}-{tx.act_cnt}"
         tx.act_cnt += 1
         tx.actions.append((act_id, action))
-        return act_id
+
+        # Emit creation event
+        if tx.action_callback:
+            action_args = {
+                'name': name,
+                'email': email,
+                'phone': phone,
+                'address': address,
+                'country': country,
+                'vat_number': vat_number
+            }
+            tx.action_callback('action_created', {
+                'action_id': act_id,
+                'action_type': 'new_supplier',
+                'action_args': action_args,
+                'timestamp': datetime.datetime.now().isoformat()
+            })
+
+        return {"action_id": act_id, "supplier_id": str(supplier_id)}
 
     @function_tool
     def tool_action_create_invoice(
@@ -407,6 +460,23 @@ def create_agent():
         act_id = f"{action.action_type()}-{tx.act_cnt}"
         tx.act_cnt += 1
         tx.actions.append((act_id, action))
+
+        # Emit creation event
+        if tx.action_callback:
+            action_args = {
+                'client_id': str(client_id),
+                'amount': amount,
+                'currency': currency,
+                'description': description,
+                'due_date': due_date.isoformat()
+            }
+            tx.action_callback('action_created', {
+                'action_id': act_id,
+                'action_type': 'create_invoice',
+                'action_args': action_args,
+                'timestamp': datetime.datetime.now().isoformat()
+            })
+
         return act_id
 
     @function_tool
@@ -425,6 +495,21 @@ def create_agent():
         act_id = f"{action.action_type()}-{tx.act_cnt}"
         tx.act_cnt += 1
         tx.actions.append((act_id, action))
+
+        # Emit creation event
+        if tx.action_callback:
+            action_args = {
+                'bank_txs': [str(tx_id) for tx_id in bank_txs],
+                'receipts': [str(receipt_id) for receipt_id in receipts],
+                'supplier_id': str(supplier_id)
+            }
+            tx.action_callback('action_created', {
+                'action_id': act_id,
+                'action_type': 'reconcile_transactions',
+                'action_args': action_args,
+                'timestamp': datetime.datetime.now().isoformat()
+            })
+
         return act_id
 
     tools = [

@@ -12,6 +12,17 @@
     --border-color: #e8d5c4;
     --shadow-subtle: 0 2px 8px rgba(139, 107, 71, 0.1);
     --shadow-elevated: 0 4px 16px rgba(139, 107, 71, 0.15);
+
+    /* Action pane blue theme colors */
+    --action-pane-bg: #1e3a5f;
+    --action-pane-header-bg: #2c4a6f;
+    --action-pane-text: #e8f0ff;
+    --action-pane-text-muted: #a8c4e8;
+    --action-pane-border: #3a5a8f;
+    --action-pane-item-bg: #264263;
+    --action-pane-item-hover: #2e4d75;
+    --action-pane-removed-bg: #3a2a4a;
+    --action-pane-accent: #5a8fd8;
 }
 
 .App {
@@ -37,6 +48,12 @@
         "Helvetica Neue",
         sans-serif;
     color: var(--text-primary);
+}
+
+.app-container {
+    display: flex;
+    height: 100%;
+    width: 100%;
 }
 
 .chat-container {
@@ -535,4 +552,165 @@
 
 .message.assistant .message-content .task-list-item input[type="checkbox"] {
     margin-right: 0.5rem;
+}
+
+/* Action Pane Styles */
+.action-pane {
+    width: 320px;
+    background: var(--action-pane-bg);
+    border-right: 1px solid var(--action-pane-border);
+    display: flex;
+    flex-direction: column;
+    color: var(--action-pane-text);
+    overflow: hidden;
+    animation: slideInFromLeft 0.3s ease-out;
+}
+
+@keyframes slideInFromLeft {
+    from {
+        transform: translateX(-100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Removed empty display:none to always show the pane */
+
+.action-pane-header {
+    background: var(--action-pane-header-bg);
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--action-pane-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.action-pane-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--action-pane-text);
+}
+
+.action-count {
+    background: var(--action-pane-accent);
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.action-pane-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+}
+
+.action-item {
+    background: var(--action-pane-item-bg);
+    border: 1px solid var(--action-pane-border);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    transition: all 0.2s ease;
+}
+
+.action-item:hover {
+    background: var(--action-pane-item-hover);
+    transform: translateX(2px);
+}
+
+.action-item.removed {
+    background: var(--action-pane-removed-bg);
+    opacity: 0.7;
+}
+
+.action-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.action-name {
+    font-weight: 600;
+    color: var(--action-pane-accent);
+    font-size: 0.95rem;
+}
+
+.action-timestamp {
+    font-size: 0.75rem;
+    color: var(--action-pane-text-muted);
+}
+
+.action-removed-badge {
+    background: #8b3a62;
+    color: white;
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.5rem;
+    display: inline-block;
+}
+
+.action-arguments {
+    font-size: 0.85rem;
+}
+
+.args-list {
+    margin-top: 0.5rem;
+}
+
+.arg-item {
+    display: flex;
+    margin: 0.5rem 0;
+    line-height: 1.4;
+}
+
+.arg-key {
+    font-weight: 500;
+    color: var(--action-pane-text-muted);
+    margin-right: 0.5rem;
+    min-width: 80px;
+}
+
+.arg-value {
+    color: var(--action-pane-text);
+    word-break: break-word;
+    flex: 1;
+}
+
+.args-raw pre {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--action-pane-border);
+    border-radius: 4px;
+    padding: 0.5rem;
+    margin: 0.5rem 0 0;
+    overflow-x: auto;
+    font-size: 0.8rem;
+    color: var(--action-pane-text);
+    font-family: "SF Mono", "Monaco", "Cascadia Code", "Roboto Mono", Consolas, monospace;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .action-pane {
+        position: fixed;
+        left: 0;
+        top: 0;
+        height: 100%;
+        z-index: 1000;
+        transform: translateX(-100%);
+    }
+
+    .action-pane.visible {
+        transform: translateX(0);
+    }
 }

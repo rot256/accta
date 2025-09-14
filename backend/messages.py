@@ -72,3 +72,30 @@ class TextDeltaMessage(BaseMessage):
 @dataclass
 class TextDoneMessage(BaseMessage):
     type: str = field(default="text_done", init=False)
+
+
+# Action state messages
+@dataclass
+class ActionCreatedMessage(BaseMessage):
+    action_id: str
+    action_type: str
+    action_args: Any
+    timestamp: str
+    type: str = field(default="action_created", init=False)
+
+
+@dataclass
+class ActionRemovedMessage(BaseMessage):
+    action_id: str
+    type: str = field(default="action_removed", init=False)
+
+
+@dataclass
+class ActionClearMessage(BaseMessage):
+    type: str = field(default="action_clear", init=False)
+
+
+@dataclass
+class ActionsStateMessage(BaseMessage):
+    actions: List[Any]
+    type: str = field(default="actions_state", init=False)
