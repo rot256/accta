@@ -665,22 +665,70 @@
 }
 
 .arg-item {
-    display: flex;
-    margin: 0.5rem 0;
+    margin: 0.75rem 0;
     line-height: 1.4;
 }
 
-.arg-key {
-    font-weight: 500;
-    color: var(--action-pane-text-muted);
-    margin-right: 0.5rem;
-    min-width: 80px;
+.arg-label {
+    font-weight: 600;
+    color: var(--action-pane-accent);
+    margin-bottom: 0.25rem;
+    font-size: 0.85rem;
 }
 
 .arg-value {
     color: var(--action-pane-text);
     word-break: break-word;
-    flex: 1;
+    margin-left: 0.5rem;
+}
+
+/* Styled value types */
+.arg-id {
+    font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
+    background: rgba(90, 143, 216, 0.15);
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    color: var(--action-pane-accent);
+}
+
+.arg-amount {
+    font-weight: 600;
+    color: #4ade80;
+}
+
+.arg-date {
+    font-style: italic;
+    color: var(--action-pane-text-muted);
+}
+
+.arg-null {
+    color: var(--action-pane-text-muted);
+    font-style: italic;
+}
+
+.arg-empty {
+    color: var(--action-pane-text-muted);
+    font-style: italic;
+}
+
+.arg-text {
+    color: var(--action-pane-text);
+}
+
+.arg-array {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.arg-array-item {
+    font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
+    background: rgba(90, 143, 216, 0.15);
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    color: var(--action-pane-accent);
 }
 
 .args-raw pre {
