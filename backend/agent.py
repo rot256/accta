@@ -6,7 +6,7 @@ import datetime
 from agents import function_tool
 from agents.agent import Agent
 
-from state import Bank, BankTransaction, CompanyData, State, Transient, StoreMemory
+from state import Bank, BankTransaction, CompanyData, State, Transient, StoreMemory, create_test_state
 from action import Action, NewInvoice, UpdateClient, UpdateSupplier, Reconcile
 from typing import List, Tuple
 
@@ -195,12 +195,18 @@ class Transaction:
         """
         Search for documents based on a search term. Used for e.g. finding receipts
         Supply the empty search_regex to obtain all documents.
+
+        Observe that:
+        - Search is case-insensitive.
+        - You might need to search for multiple terms, it might not match exactly.
         """
         docs = []
         regex = re.compile(search_regex, re.IGNORECASE)
         for doc in self.transient.list_documents():
-            if regex.search(doc.desc):
-                docs.append(dataclasses.asdict(doc))
+            if regex.search(doc.description):
+                docs.append(doc)
+            elif regex.search(doc.content):
+                docs.append(doc)
         return docs
 
     def tool_query_list_bank_transactions(
@@ -229,66 +235,7 @@ class Transaction:
 
 def create_agent():
     """Create a new agent instance with fresh state."""
-    st = StoreMemory()
-
-    st.set_bank(
-        Bank(
-            id=uuid.uuid4(),
-            currency="USD",
-            iban="US1234567890",
-            name="Bank of America"
-        ),
-        [
-            BankTransaction(
-                id=uuid.uuid4(),
-                date=datetime.date(2023, 1, 1),
-                amount=-100.00,
-                description="Bought working shoes"
-            ),
-            BankTransaction(
-                id=uuid.uuid4(),
-                date=datetime.date(2023, 2, 1),
-                amount=-50.00,
-                description="Rent"
-            )
-        ]
-    )
-
-    st.set_bank(
-        Bank(
-            id=uuid.uuid4(),
-            currency="USD",
-            iban="US9876543210",
-            name="Chase"
-        ),
-        [
-            BankTransaction(
-                id=uuid.uuid4(),
-                date=datetime.date(2023, 1, 1),
-                amount=100.00,
-                description="Salary"
-            ),
-            BankTransaction(
-                id=uuid.uuid4(),
-                date=datetime.date(2023, 2, 1),
-                amount=-50.00,
-                description="Rent"
-            )
-        ]
-    )
-
-    st.set_company(
-        CompanyData(
-            id=uuid.uuid4(),
-            name="Acme Inc.",
-            address="123 Main St, Anytown USA",
-            phone="555-1234",
-            email="info@acmeinc.com",
-            vat_number="123456789",
-            country="USA",
-        )
-    )
-
+    st = create_test_state()
     tx = Transaction(st)
 
     # Create function tools that access state via closure

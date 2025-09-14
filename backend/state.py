@@ -49,7 +49,8 @@ class Supplier(Obj):
 class Document(Obj):
     id: uuid.UUID
     name: str
-    desc: str # AI extracted
+    description: str # AI extracted
+    content: str # OCR'd full text content
 
 
 @dataclass
@@ -364,6 +365,256 @@ class Transient(State):
     ):
         self.invoices[obj.id] = obj
 
+def create_test_state():
+    """Create a test state with sample data for testing purposes."""
+    st = StoreMemory()
+
+    # Set up company data
+    st.set_company(
+        CompanyData(
+            id=uuid.uuid4(),
+            name="Acme Inc.",
+            address="123 Main St, Anytown USA",
+            phone="555-1234",
+            email="info@acmeinc.com",
+            vat_number="123456789",
+            country="USA",
+        )
+    )
+
+    # Set up first bank with transactions
+    st.set_bank(
+        Bank(
+            id=uuid.uuid4(),
+            currency="USD",
+            iban="US1234567890",
+            name="Bank of America"
+        ),
+        [
+            BankTransaction(
+                id=uuid.uuid4(),
+                date=datetime.date(2023, 1, 1),
+                amount=-100.00,
+                description="Bought working shoes"
+            ),
+            BankTransaction(
+                id=uuid.uuid4(),
+                date=datetime.date(2023, 1, 31),
+                amount=-2500.00,
+                description="Employee salary payment"
+            )
+        ]
+    )
+
+    # Set up second bank with transactions
+    st.set_bank(
+        Bank(
+            id=uuid.uuid4(),
+            currency="USD",
+            iban="US9876543210",
+            name="Chase"
+        ),
+        [
+            BankTransaction(
+                id=uuid.uuid4(),
+                date=datetime.date(2023, 1, 15),
+                amount=1500.00,
+                description="Payment received from client"
+            ),
+            BankTransaction(
+                id=uuid.uuid4(),
+                date=datetime.date(2023, 2, 1),
+                amount=-3500.00,
+                description="Employee salaries - February"
+            )
+        ]
+    )
+
+    # Add some test clients
+    client1 = Client(
+        id=uuid.uuid4(),
+        name="Test Client 1",
+        address="456 Client St",
+        vat_number="CLIENT123",
+        email="client1@test.com",
+        phone="555-2345",
+        country="USA"
+    )
+    st.store_client(client1)
+
+    # Add some test suppliers
+    supplier1 = Supplier(
+        id=uuid.uuid4(),
+        name="Test Supplier 1",
+        address="789 Supplier Ave",
+        vat_number="SUPPLIER456",
+        email="supplier1@test.com",
+        phone="555-3456",
+        country="USA"
+    )
+    st.store_supplier(supplier1)
+
+    # Add test documents
+    doc1 = Document(
+        id=uuid.uuid4(),
+        name="Invoice_2023_001.pdf",
+        description="Invoice for office supplies",
+        content="""INVOICE
+Invoice #: INV-2023-001
+Date: January 5, 2023
+
+From: Office Supplies Co.
+123 Business Blvd
+New York, NY 10001
+
+To: Acme Inc.
+123 Main St, Anytown USA
+
+Items:
+- Paper (10 reams) - $50.00
+- Pens (5 boxes) - $25.00
+- Notebooks (20 units) - $40.00
+- Folders (30 units) - $15.00
+
+Subtotal: $130.00
+Tax (8%): $10.40
+Total: $140.40
+
+Payment Due: February 5, 2023
+"""
+    )
+    st.store_document(doc1)
+
+    doc2 = Document(
+        id=uuid.uuid4(),
+        name="Receipt_2023_002.pdf",
+        description="Receipt for working shoes purchase",
+        content="""RECEIPT
+Store: WorkGear Pro
+Date: January 1, 2023
+Transaction #: 78234
+
+Items Purchased:
+1x Steel Toe Work Boots - Size 10
+   SKU: WB-1023
+   Price: $100.00
+
+Subtotal: $100.00
+Tax: $0.00
+Total: $100.00
+
+Payment Method: Debit Card ending in 7890
+Thank you for your purchase!
+"""
+    )
+    st.store_document(doc2)
+
+    doc3 = Document(
+        id=uuid.uuid4(),
+        name="Contract_2023_003.pdf",
+        description="Service agreement with Test Client 1",
+        content="""SERVICE AGREEMENT
+
+This Service Agreement ("Agreement") is entered into as of January 15, 2023
+
+BETWEEN:
+Acme Inc. ("Service Provider")
+123 Main St, Anytown USA
+
+AND:
+Test Client 1 ("Client")
+456 Client St
+
+SERVICES:
+The Service Provider agrees to provide consulting services including:
+- Monthly business analysis reports
+- Quarterly strategy sessions
+- On-demand advisory support
+
+COMPENSATION:
+Client agrees to pay Service Provider $1,500.00 per month for services rendered.
+
+TERM:
+This agreement shall commence on January 15, 2023 and continue for 12 months.
+
+SIGNATURES:
+Service Provider: ________________
+Client: ________________
+"""
+    )
+    st.store_document(doc3)
+
+    doc4 = Document(
+        id=uuid.uuid4(),
+        name="Invoice_2023_004.pdf",
+        description="Supplier invoice for computer equipment",
+        content="""INVOICE
+TechSupply Inc.
+789 Tech Avenue
+Silicon Valley, CA 94000
+
+Invoice To: Acme Inc.
+Invoice Number: TS-2023-0142
+Date: January 20, 2023
+
+Description:
+1x Dell Laptop XPS 15 - $1,800.00
+1x External Monitor 27" - $450.00
+1x Wireless Keyboard & Mouse Set - $120.00
+1x USB-C Docking Station - $200.00
+
+Subtotal: $2,570.00
+Tax (8.5%): $218.45
+Shipping: $25.00
+Total Due: $2,813.45
+
+Payment Terms: Net 30
+Due Date: February 19, 2023
+"""
+    )
+    st.store_document(doc4)
+
+    doc5 = Document(
+        id=uuid.uuid4(),
+        name="Receipt_2023_005.pdf",
+        description="Rent payment receipt - February 2023",
+        content="""RENT RECEIPT
+
+Property Management LLC
+100 Property Lane
+Anytown, USA
+
+Tenant: Acme Inc.
+Property: 123 Main St, Anytown USA
+Period: February 2023
+
+Amount Received: $50.00
+Payment Date: February 1, 2023
+Payment Method: Bank Transfer
+Reference: RENT-FEB-2023
+
+This receipt confirms payment of rent for the above period.
+
+Property Manager: ________________
+Date: February 1, 2023
+"""
+    )
+    st.store_document(doc5)
+
+    # Add test invoice
+    invoice1 = Invoice(
+        id=uuid.uuid4(),
+        client=client1.id,
+        amount=1500.00,
+        currency="USD",
+        created=datetime.date(2023, 1, 15),
+        due_date=datetime.date(2023, 2, 15),
+        description="Consulting services - January 2023"
+    )
+    st.store_invoice(invoice1)
+
+    return st
+
 import json
 import pytest
 
@@ -405,7 +656,8 @@ def test_json_serialization_deserialization():
     document = Document(
         id=uuid.uuid4(),
         name="Doc1",
-        desc="Extracted description"
+        description="Extracted description",
+        content="Full OCR content of the document"
     )
     bank_tx = BankTransaction(
         id=uuid.uuid4(),
