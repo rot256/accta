@@ -4,7 +4,8 @@ import datetime
 from enum import Enum
 from typing import List
 from country import validate_country_code
-from state import Client, Invoice, Reconciliation, State, Supplier
+from state import Client, Invoice, State, Supplier
+from state import Expense as StateExpense
 from pydantic.dataclasses import dataclass
 
 class ActionType:
@@ -142,15 +143,17 @@ class Expense(Action):
         # 2. the docs_ids are valid
         st.check_document_ids(self.docs_ids)
 
-        # 3. the bank_txs and docs_ids are not already reconciled
-        st.check_transactions_not_reconciled(self.bank_txs)
-        st.check_documents_not_reconciled(self.docs_ids)
+        # 3. the bank_txs and docs_ids are not already expensed
+        st.check_transactions_not_expensed(self.bank_txs)
+        st.check_documents_not_expensed(self.docs_ids)
 
-        st.store_reconciliation(
-            Reconciliation(
+        st.store_expense(
+            StateExpense(
                 id=uuid.uuid4(),
                 bank_txs=self.bank_txs,
                 docs_ids=self.docs_ids,
                 supplier_id=self.supplier,
+                description=self.description,
+                vat_type=self.vat_type
             )
         )

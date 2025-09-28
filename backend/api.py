@@ -225,6 +225,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 agent,
                 input=user_input,
                 session=session,
+                max_turns=50,
             )
 
             await manager.send_message(

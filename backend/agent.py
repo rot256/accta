@@ -5,7 +5,7 @@ import datetime
 from agents import function_tool
 from agents.agent import Agent
 
-from state import Bank, BankTransaction, CompanyData, State, Transient, create_test_state
+from state import Bank, BankTransaction, CompanyData, State, Transient
 from action import Action, NewInvoice, UpdateClient, UpdateSupplier, Expense, VATType
 from typing import Dict, List, Tuple, Optional, Callable, Union
 
@@ -84,9 +84,13 @@ class Transaction:
         self.transient = transient
         self.actions = actions
 
-def create_agent(action_callback: Optional[Callable] = None):
+def create_agent(action_callback: Optional[Callable] = None, initial_state: Optional[State] = None):
     """Create a new agent instance with fresh state."""
-    st = create_test_state()
+    if initial_state is None:
+        from test_state import create_test_state
+        st = create_test_state()
+    else:
+        st = initial_state
     tx = Transaction(st, action_callback)
 
     # Create function tools that access state via closure
